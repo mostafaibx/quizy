@@ -1,0 +1,67 @@
+{
+    "$schema": "node_modules/wrangler/config-schema.json",
+    "main": ".open-next/worker.js",
+    "name": "quizy",
+    "compatibility_date": "2025-09-27",
+    "compatibility_flags": ["nodejs_compat"],
+    "account_id": "8eeaae849c8a2e444bc57bdf1e280766",  
+    "d1_databases": [
+      { "binding": "DB",
+        "database_name": "quizy",
+        "database_id": "ce549e4e-d4cf-4385-b577-0032cd8f31a4",
+        "migrations_dir": "./src/db/migrations"
+      }
+    ],
+    "kv_namespaces": [
+        {
+          "binding": "NEXT_INC_CACHE_KV",
+          "id": "c8a30ac6dd394df29a769ffa5440d569"
+        }
+      ],
+    "r2_buckets": [
+      { "binding": "FILES",
+        "bucket_name": "quizy-files"
+      }
+    ],
+    "dev": 
+      { "port": 3000 },
+    "routes": 
+      [{
+        "pattern": "localhost:3000/*",
+        "zone_name": "localhost"
+      }],
+    "observability": {
+        "enabled": true,
+        "head_sampling_rate": 1
+    },
+    "placement": {
+    "mode": "smart"
+  },
+  // Cron trigger for processing pending files
+  "crons": ["*/5 * * * *"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "vars": {
+    "NODE_ENV": "development",
+    "NEXT_PUBLIC_WEBAPP_ENV": "local",
+    "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
+    "ALLOWED_ORIGINS": "http://localhost:3000",
+    "QSTASH_URL": "https://qstash.upstash.io",
+    "QSTASH_TOKEN": "eyJVc2VySUQiOiI3MmE0ZDliYy1lN2RlLTRlNzItOWQ0OC00MDEzMDQ0M2E0YWEiLCJQYXNzd29yZCI6IjZkNzZkYmJkZWY5OTQxYTM5MDI0MGQ0ZjQ4MWE2NjhmIn0=",
+    "QSTASH_CURRENT_SIGNING_KEY": "sig_7hfY7bUHoKhj71j3iNEokZuDhRSD",
+    "QSTASH_NEXT_SIGNING_KEY": "sig_79THcqQKe1enonZSTmyNRRRDUUfB"
+  },
+  "env": {
+    "development": {
+      "vars": {
+        "NODE_ENV": "development",
+        "NEXT_PUBLIC_WEBAPP_ENV": "local",
+        "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
+        "ALLOWED_ORIGINS": "http://localhost:3000"
+      }
+    }
+  }
+
+  }

@@ -3,6 +3,8 @@
 /.pnp
 .pnp.js
 .yarn/install-state.gz
+.open-next/
+.wrangler/
 
 # testing
 /coverage
@@ -84,3 +86,6 @@ pids
 .tmp
 tmp/
 temp/
+
+
+.env
