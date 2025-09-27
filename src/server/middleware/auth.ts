@@ -22,6 +22,20 @@ async function createSignature(message: string, secret: string): Promise<string>
 }
 
 export const verifyQStashSignature = async (c: Context, next: Next) => {
+  const env = c.env as {
+    NODE_ENV?: string;
+    QSTASH_CURRENT_SIGNING_KEY?: string;
+    QSTASH_NEXT_SIGNING_KEY?: string;
+  };
+
+  // Skip signature verification in development with local QStash
+  if (env.NODE_ENV === 'development') {
+    const body = await c.req.text();
+    c.set('parsedBody', JSON.parse(body));
+    await next();
+    return;
+  }
+
   const signature = c.req.header('upstash-signature');
 
   if (!signature) {
@@ -29,10 +43,6 @@ export const verifyQStashSignature = async (c: Context, next: Next) => {
   }
 
   const body = await c.req.text();
-  const env = c.env as {
-    QSTASH_CURRENT_SIGNING_KEY?: string;
-    QSTASH_NEXT_SIGNING_KEY?: string;
-  };
 
   const keys = [
     env.QSTASH_CURRENT_SIGNING_KEY,
