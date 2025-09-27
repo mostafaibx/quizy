@@ -8,6 +8,7 @@ export interface AppEnv {
   QSTASH_TOKEN?: string;
   QSTASH_CURRENT_SIGNING_KEY?: string;
   QSTASH_NEXT_SIGNING_KEY?: string;
+  NEXT_PUBLIC_APP_URL?: string;
 }
 
 export interface AppContext {
