@@ -96,7 +96,11 @@ export { ApiErrors } from './middleware/error';
 
 // Custom Next.js API route handler for Hono
 export async function honoHandler(req: NextRequest) {
-  // Since we're using basePath, we just need to pass the request directly
-  return app.fetch(req);
+  // Get Cloudflare context for bindings
+  const { getCloudflareContext } = await import('@opennextjs/cloudflare');
+  const cfContext = await getCloudflareContext();
+
+  // Pass the request with Cloudflare bindings
+  return app.fetch(req, cfContext?.env);
 }
 
