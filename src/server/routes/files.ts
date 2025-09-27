@@ -16,8 +16,8 @@ const app = new Hono<HonoEnv>()
     throw ApiErrors.badRequest('No file provided');
   }
 
-  const ctx = (globalThis as { __cf_context?: ExecutionContext }).__cf_context;
-  const result = await fileService.uploadFile(c.env, file, userId, ctx);
+  // Get execution context from Cloudflare's global context
+  const result = await fileService.uploadFile(c.env, file, userId);
 
   if (!result.success) {
     throw ApiErrors.internal(result.error);
