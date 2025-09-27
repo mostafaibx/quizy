@@ -1,4 +1,3 @@
-import { drizzle } from 'drizzle-orm/d1';
 import { eq, and, lt } from 'drizzle-orm';
 import { files } from '@/db/schema';
 import { parseFile, type ParsedContent } from '@/lib/file-parser';
@@ -13,6 +12,7 @@ import type {
   FileWithContentResponse,
   CronJobResponse
 } from '../types';
+import { getDb } from '@/db';
 
 // File validation
 export const validateFile = (file: File): ServiceResponse<null> => {
@@ -102,7 +102,7 @@ export const processInBackground = async (
   content: ArrayBuffer,
   mimeType: string
 ): Promise<void> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     await db.update(files)
@@ -138,7 +138,7 @@ export const queueToQStash = async (
 
   try {
     const response = await fetch(
-      `${env.QSTASH_URL}/v2/publish/https://quizy.workers.dev/api/files/process`,
+      `${env.QSTASH_URL}/v2/publish/${env.NEXT_PUBLIC_APP_URL}/api/files/process`,
       {
         method: 'POST',
         headers: {
@@ -179,7 +179,7 @@ export const uploadFile = async (
       };
     }
 
-    const db = drizzle(env.DB);
+    const db = await getDb();
     const fileId = nanoid();
     console.log('Generated file ID:', fileId);
 
@@ -201,23 +201,7 @@ export const uploadFile = async (
     }).returning();
     console.log('Metadata saved:', newFile);
 
-    // Process based on size
-    if (file.size < 1_000_000) {
-      // Small files: Process immediately
-      if (ctx?.waitUntil) {
-        ctx.waitUntil(processInBackground(env, fileId, arrayBuffer, file.type));
-      }
-
-      return {
-        success: true,
-        data: {
-          file: { ...newFile, status: 'processing' },
-          mode: 'immediate',
-        },
-      };
-    }
-
-    // Large files: Queue to QStash
+    // Queue all files to QStash for processing
     const queued = await queueToQStash(env, {
       fileId,
       r2Key,
@@ -265,7 +249,7 @@ export const processFile = async (
     mimeType: string;
   }
 ): Promise<ServiceResponse<ProcessResponse>> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     const { fileId, r2Key, mimeType } = input;
@@ -353,7 +337,7 @@ export const getFileStatus = async (
   env: AppEnv,
   fileId: string
 ): Promise<ServiceResponse<StatusResponse>> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     const [file] = await db
@@ -430,7 +414,7 @@ export const getFileWithContent = async (
   env: AppEnv,
   fileId: string
 ): Promise<ServiceResponse<FileWithContentResponse>> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     const [file] = await db
@@ -497,7 +481,7 @@ export const deleteFile = async (
   env: AppEnv,
   fileId: string
 ): Promise<ServiceResponse<{ message: string }>> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     const [file] = await db
@@ -541,7 +525,7 @@ export const deleteFile = async (
 export const processPendingFiles = async (
   env: AppEnv
 ): Promise<ServiceResponse<CronJobResponse>> => {
-  const db = drizzle(env.DB);
+  const db = await getDb();
 
   try {
     const tenMinutesAgo = new Date(Date.now() - 10 * 60 * 1000).toISOString();
