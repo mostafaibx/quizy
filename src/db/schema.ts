@@ -5,6 +5,101 @@ import { InferSelectModel, InferInsertModel } from "drizzle-orm";
 export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   email: text("email").unique().notNull(),
+  name: text("name"),
+  emailVerified: integer("email_verified", { mode: 'timestamp' }),
+  image: text("image"),
+  password: text("password"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const accounts = sqliteTable("accounts", {
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  type: text("type").notNull(),
+  provider: text("provider").notNull(),
+  providerAccountId: text("provider_account_id").notNull(),
+  refresh_token: text("refresh_token"),
+  access_token: text("access_token"),
+  expires_at: integer("expires_at"),
+  token_type: text("token_type"),
+  scope: text("scope"),
+  id_token: text("id_token"),
+  session_state: text("session_state"),
+});
+
+export const sessions = sqliteTable("sessions", {
+  sessionToken: text("session_token").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  expires: integer("expires", { mode: 'timestamp' }).notNull(),
+});
+
+export const verificationTokens = sqliteTable("verification_tokens", {
+  identifier: text("identifier").notNull(),
+  token: text("token").notNull(),
+  expires: integer("expires", { mode: 'timestamp' }).notNull(),
+});
+
+export const plans = sqliteTable("plans", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  price: real("price").notNull().default(0),
+  currency: text("currency").notNull().default("USD"),
+  interval: text("interval").notNull().default("month"), // month, year, lifetime
+  features: text("features_json"), // JSON array of feature strings
+  limits: text("limits_json"), // JSON object with limits (e.g., maxFiles, maxQuizzes, etc.)
+  isActive: integer("is_active").notNull().default(1),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const subscriptions = sqliteTable("subscriptions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  planId: text("plan_id").notNull().references(() => plans.id),
+  status: text("status").notNull(), // active, canceled, expired, past_due, trialing
+  currentPeriodStart: text("current_period_start").notNull(),
+  currentPeriodEnd: text("current_period_end").notNull(),
+  cancelAtPeriodEnd: integer("cancel_at_period_end").notNull().default(0),
+  canceledAt: text("canceled_at"),
+  trialStart: text("trial_start"),
+  trialEnd: text("trial_end"),
+  // Payment provider references
+  stripeCustomerId: text("stripe_customer_id"),
+  stripeSubscriptionId: text("stripe_subscription_id"),
+  stripePriceId: text("stripe_price_id"),
+  // Metadata
+  metadata: text("metadata_json"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const paymentHistory = sqliteTable("payment_history", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id),
+  subscriptionId: text("subscription_id").references(() => subscriptions.id),
+  amount: real("amount").notNull(),
+  currency: text("currency").notNull(),
+  status: text("status").notNull(), // succeeded, failed, pending, refunded
+  description: text("description"),
+  invoiceId: text("invoice_id"),
+  stripePaymentIntentId: text("stripe_payment_intent_id"),
+  failureReason: text("failure_reason"),
+  paidAt: text("paid_at"),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const usageTracking = sqliteTable("usage_tracking", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  metric: text("metric").notNull(), // files_uploaded, quizzes_created, questions_generated, etc.
+  count: integer("count").notNull().default(0),
+  periodStart: text("period_start").notNull(),
+  periodEnd: text("period_end").notNull(),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
 });
 
 export const files = sqliteTable("files", {
@@ -32,9 +127,7 @@ export const quizzes = sqliteTable("quizzes", {
   createdBy: text("created_by").notNull().references(() => users.id),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
   updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
-}, (table) => ({
-  fileIdIdx: index("quizzes_file_id_idx").on(table.fileId),
-}));
+});
 
 export const questions = sqliteTable("questions", {
   id: text("id").primaryKey(),
@@ -45,10 +138,7 @@ export const questions = sqliteTable("questions", {
   explanation: text("explanation"),
   payloadJson: text("payload_json"),
   createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
-}, (table) => ({
-  quizPositionUnique: uniqueIndex("questions_quiz_position_unique").on(table.quizId, table.position),
-  quizPositionIdx: index("questions_quiz_position_idx").on(table.quizId, table.position),
-}));
+});
 
 export const questionOptions = sqliteTable("question_options", {
   id: text("id").primaryKey(),
@@ -56,18 +146,13 @@ export const questionOptions = sqliteTable("question_options", {
   idx: integer("idx").notNull(),
   text: text("text").notNull(),
   isCorrect: integer("is_correct"),
-}, (table) => ({
-  questionIdxUnique: uniqueIndex("question_options_question_idx_unique").on(table.questionId, table.idx),
-  questionIdIdx: index("question_options_question_id_idx").on(table.questionId),
-}));
+});
 
 export const questionShortAccept = sqliteTable("question_short_accept", {
   id: text("id").primaryKey(),
   questionId: text("question_id").notNull().references(() => questions.id, { onDelete: "cascade" }),
   answer: text("answer").notNull(),
-}, (table) => ({
-  questionIdIdx: index("question_short_accept_question_id_idx").on(table.questionId),
-}));
+});
 
 export const questionNumericKey = sqliteTable("question_numeric_key", {
   questionId: text("question_id").primaryKey().references(() => questions.id, { onDelete: "cascade" }),
@@ -80,10 +165,7 @@ export const questionOrderItems = sqliteTable("question_order_items", {
   questionId: text("question_id").notNull().references(() => questions.id, { onDelete: "cascade" }),
   itemIdx: integer("item_idx").notNull(),
   text: text("text").notNull(),
-}, (table) => ({
-  questionIdxUnique: uniqueIndex("question_order_items_question_idx_unique").on(table.questionId, table.itemIdx),
-  questionIdIdx: index("question_order_items_question_id_idx").on(table.questionId),
-}));
+});
 
 export const questionPairs = sqliteTable("question_pairs", {
   id: text("id").primaryKey(),
@@ -92,29 +174,20 @@ export const questionPairs = sqliteTable("question_pairs", {
   leftText: text("left_text").notNull(),
   rightIdx: integer("right_idx").notNull(),
   rightText: text("right_text").notNull(),
-}, (table) => ({
-  questionLeftUnique: uniqueIndex("question_pairs_question_left_unique").on(table.questionId, table.leftIdx),
-  questionRightUnique: uniqueIndex("question_pairs_question_right_unique").on(table.questionId, table.rightIdx),
-  questionIdIdx: index("question_pairs_question_id_idx").on(table.questionId),
-}));
+});
 
 export const questionBlanks = sqliteTable("question_blanks", {
   id: text("id").primaryKey(),
   questionId: text("question_id").notNull().references(() => questions.id, { onDelete: "cascade" }),
   blankNo: integer("blank_no").notNull(),
-}, (table) => ({
-  questionBlankUnique: uniqueIndex("question_blanks_question_blank_unique").on(table.questionId, table.blankNo),
-}));
+});
 
 export const questionBlankAccept = sqliteTable("question_blank_accept", {
   id: text("id").primaryKey(),
   questionId: text("question_id").notNull().references(() => questions.id, { onDelete: "cascade" }),
   blankNo: integer("blank_no").notNull(),
   answer: text("answer").notNull(),
-}, (table) => ({
-  questionBlankAnswerUnique: uniqueIndex("question_blank_accept_unique").on(table.questionId, table.blankNo, table.answer),
-  questionBlankIdx: index("question_blank_accept_idx").on(table.questionId, table.blankNo),
-}));
+});
 
 export const quizAttempts = sqliteTable("quiz_attempts", {
   id: text("id").primaryKey(),
@@ -126,10 +199,7 @@ export const quizAttempts = sqliteTable("quiz_attempts", {
   totalCorrect: integer("total_correct").default(0),
   scorePct: real("score_pct"),
   optionShuffleSeed: integer("option_shuffle_seed"),
-}, (table) => ({
-  quizUserStartUnique: uniqueIndex("quiz_attempts_unique").on(table.quizId, table.userId, table.startedAt),
-  userStartIdx: index("quiz_attempts_user_start_idx").on(table.userId, table.startedAt),
-}));
+});
 
 export const attemptAnswers = sqliteTable("attempt_answers", {
   attemptId: text("attempt_id").notNull().references(() => quizAttempts.id, { onDelete: "cascade" }),
@@ -138,10 +208,7 @@ export const attemptAnswers = sqliteTable("attempt_answers", {
   isCorrect: integer("is_correct").notNull(),
   partialPct: real("partial_pct"),
   answeredAt: text("answered_at").notNull().default(sql`(datetime('now'))`),
-}, (table) => ({
-  attemptIdIdx: index("attempt_answers_attempt_id_idx").on(table.attemptId),
-  pk: uniqueIndex("attempt_answers_pk").on(table.attemptId, table.questionId),
-}));
+});
 
 export const quizImports = sqliteTable("quiz_imports", {
   id: text("id").primaryKey(),
@@ -155,6 +222,20 @@ export const quizImports = sqliteTable("quiz_imports", {
 
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
+export type Account = InferSelectModel<typeof accounts>;
+export type NewAccount = InferInsertModel<typeof accounts>;
+export type Session = InferSelectModel<typeof sessions>;
+export type NewSession = InferInsertModel<typeof sessions>;
+export type VerificationToken = InferSelectModel<typeof verificationTokens>;
+export type NewVerificationToken = InferInsertModel<typeof verificationTokens>;
+export type Plan = InferSelectModel<typeof plans>;
+export type NewPlan = InferInsertModel<typeof plans>;
+export type Subscription = InferSelectModel<typeof subscriptions>;
+export type NewSubscription = InferInsertModel<typeof subscriptions>;
+export type PaymentHistory = InferSelectModel<typeof paymentHistory>;
+export type NewPaymentHistory = InferInsertModel<typeof paymentHistory>;
+export type UsageTracking = InferSelectModel<typeof usageTracking>;
+export type NewUsageTracking = InferInsertModel<typeof usageTracking>;
 export type File = InferSelectModel<typeof files>;
 export type NewFile = InferInsertModel<typeof files>;
 export type Quiz = InferSelectModel<typeof quizzes>;
