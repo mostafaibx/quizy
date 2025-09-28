@@ -5,48 +5,7 @@ import files from './routes/files';
 import cron from './routes/cron';
 import { NextRequest } from 'next/server';
 import { errorHandler, ApiErrors } from './middleware/error';
-//import type { AppContext } from './types';
-
-//const app = new Hono<{ Bindings: AppContext['env'] }>();
-
-// Cloudflare bindings type
-export type CloudflareBindings = {
-  DB: D1Database;
-  FILES: R2Bucket;
-  KV?: KVNamespace;
-  NEXT_INC_CACHE_KV?: KVNamespace;
-  ANALYTICS_ENGINE?: AnalyticsEngineDataset;
-  // Environment variables
-  ALLOWED_ORIGINS?: string;
-  RESEND_API_KEY?: string;
-  NEXT_PUBLIC_EMAIL_FROM?: string;
-  NEXT_PUBLIC_APP_URL?: string;
-  NEXT_PUBLIC_WEBAPP_ENV?: string;
-  NODE_ENV?: string;
-  QSTASH_URL?: string;
-  QSTASH_TOKEN?: string;
-  QSTASH_CURRENT_SIGNING_KEY?: string;
-  QSTASH_NEXT_SIGNING_KEY?: string;
-};
-
-// Extend Hono's environment with our bindings
-export type HonoEnv = {
-  Bindings: CloudflareBindings;
-  Variables: {
-    user?: {
-      id: string;
-      email?: string | null;
-      name?: string | null;
-      image?: string | null;
-      role?: string;
-      permissions?: string[];
-    };
-    requestId?: string;
-    userId?: string;
-    parsedBody?: unknown;
-    [key: string]: unknown; // For validated data storage
-  };
-};
+import type { HonoEnv } from '@/types/cloudflare';
 
 
 const app = new Hono<HonoEnv>().basePath('/api')
