@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import type { ContentfulStatusCode } from 'hono/utils/http-status';
 import { ZodError } from 'zod';
 
-import type { HonoEnv } from '@/server/hono';
+import type { HonoEnv } from '@/types/cloudflare';
 
 /**
  * Consistent error response structure
