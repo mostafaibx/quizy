@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
-import * as fileService from '../services/file.service';
+import * as fileProcessor from '../services/processing/file-processor.service';
 import { ApiErrors } from '../middleware/error';
-import { HonoEnv } from '../hono';
+import type { HonoEnv } from '@/types/cloudflare';
 
 const app = new Hono<HonoEnv>()
 
@@ -17,7 +17,7 @@ const app = new Hono<HonoEnv>()
     // In production, return 401
   }
 
-  const result = await fileService.processPendingFiles(c.env);
+  const result = await fileProcessor.processPendingFiles(c.env);
 
   if (!result.success) {
      throw ApiErrors.internal(result.error);

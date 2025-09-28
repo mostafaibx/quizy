@@ -1,13 +1,18 @@
 import { Hono } from 'hono';
-import * as fileService from '../services/file.service';
-import { verifyQStashSignature, extractUserId } from '../middleware/auth';
+import * as fileProcessor from '../services/processing/file-processor.service';
+import { verifyQStashSignature, extractUserId } from '../middleware/qstash-auth';
 import { ApiErrors } from '../middleware/error';
-import type { HonoEnv } from '../hono';
+import type { HonoEnv } from '@/types/cloudflare';
+import { authMiddleware } from '../middleware/auth';
 
 const app = new Hono<HonoEnv>()
 
 // Upload file
-.post('/upload', extractUserId, async (c) => {
+.post(
+  '/upload',
+  authMiddleware,
+   extractUserId, 
+   async (c) => {
   const formData = await c.req.formData();
   const file = formData.get('file') as File;
   const userId = c.get('userId') as string;
@@ -16,8 +21,7 @@ const app = new Hono<HonoEnv>()
     throw ApiErrors.badRequest('No file provided');
   }
 
-  // Get execution context from Cloudflare's global context
-  const result = await fileService.uploadFile(c.env, file, userId);
+  const result = await fileProcessor.uploadFile(c.env, file, userId);
 
   if (!result.success) {
     throw ApiErrors.internal(result.error);
@@ -27,7 +31,7 @@ const app = new Hono<HonoEnv>()
 })
 
 // Process file (QStash webhook)
-.post('/process', verifyQStashSignature, async (c) => {
+.post('/process', authMiddleware, verifyQStashSignature, async (c) => {
   const data = c.get('parsedBody') as {
     fileId: string;
     r2Key: string;
@@ -35,7 +39,7 @@ const app = new Hono<HonoEnv>()
     userId: string;
   };
 
-  const result = await fileService.processFile(c.env, {
+  const result = await fileProcessor.processFile(c.env, {
     fileId: data.fileId,
     r2Key: data.r2Key,
     mimeType: data.mimeType,
@@ -49,9 +53,9 @@ const app = new Hono<HonoEnv>()
 })
 
 // Get file with content
-.get('/:id', async (c) => {
+.get('/:id', authMiddleware, async (c) => {
   const fileId = c.req.param('id');
-  const result = await fileService.getFileWithContent(c.env, fileId);
+  const result = await fileProcessor.getFileWithContent(c.env, fileId);
 
   if (!result.success) {
     if (result.code === 404) {
@@ -64,9 +68,9 @@ const app = new Hono<HonoEnv>()
 })
 
 // Get file status
-.get('/:id/status', async (c) => {
+.get('/:id/status', authMiddleware, async (c) => {
   const fileId = c.req.param('id');
-  const result = await fileService.getFileStatus(c.env, fileId);
+  const result = await fileProcessor.getFileStatus(c.env, fileId);
 
   if (!result.success) {
     if (result.code === 404) {
@@ -79,9 +83,9 @@ const app = new Hono<HonoEnv>()
 })
 
 // Delete file
-.delete('/:id', async (c) => {
+.delete('/:id', authMiddleware, async (c) => {
   const fileId = c.req.param('id');
-  const result = await fileService.deleteFile(c.env, fileId);
+  const result = await fileProcessor.deleteFile(c.env, fileId);
 
   if (!result.success) {
     if (result.code === 404) {
@@ -93,17 +97,24 @@ const app = new Hono<HonoEnv>()
   return c.json({ success: true, data: result.data });
 })
 
-// List files (for completeness)
-.get('/', extractUserId, async (c) => {
+// List files for user
+.get('/', authMiddleware, extractUserId, async (c) => {
   const userId = c.get('userId') as string;
-  const includeDeleted = c.req.query('deleted') === 'true';
+  const limit = parseInt(c.req.query('limit') || '20', 10);
+  const offset = parseInt(c.req.query('offset') || '0', 10);
+  const status = c.req.query('status');
 
-  // This would need implementation in the service layer
-  return c.json({
-    success: true,
-    data: [],
-    message: 'List files endpoint not yet implemented'
+  const result = await fileProcessor.listUserFiles(c.env, userId, {
+    limit,
+    offset,
+    status,
   });
+
+  if (!result.success) {
+    throw ApiErrors.internal(result.error);
+  }
+
+  return c.json({ success: true, data: result.data });
 })
 
 export default app;

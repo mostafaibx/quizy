@@ -50,6 +50,21 @@ export interface FileWithContent {
   content?: ParsedContent;
 }
 
+export interface ListFilesResponse {
+  files: Array<{
+    id: string;
+    name: string;
+    status: string;
+    mime: string;
+    sizeBytes: number;
+    pageCount: number | null;
+    createdAt: string;
+    updatedAt: string;
+    hasContent: boolean;
+  }>;
+  total: number;
+}
+
 /**
  * Upload a file for processing
  *
@@ -213,6 +228,47 @@ async function uploadAndWait(
   return getFileById(uploadResult.file.id);
 }
 
+/**
+ * List all files for a user
+ *
+ * @param userId User ID to get files for
+ * @param options Query options
+ * @returns List of files with metadata
+ */
+async function listFiles(
+  userId: string,
+  options: {
+    limit?: number;
+    offset?: number;
+    status?: string;
+  } = {}
+): Promise<ListFilesResponse> {
+  const params = new URLSearchParams();
+  if (options.limit) params.append('limit', options.limit.toString());
+  if (options.offset) params.append('offset', options.offset.toString());
+  if (options.status) params.append('status', options.status);
+
+  const headers: HeadersInit = {
+    'x-user-id': userId,
+  };
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/files${params.toString() ? `?${params.toString()}` : ''}`,
+    {
+      method: 'GET',
+      headers,
+    }
+  );
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`Failed to list files – ${res.status}: ${text}`);
+  }
+
+  const json = await res.json() as { data: ListFilesResponse };
+  return json.data;
+}
+
 // Export RPC client
 export const fileRpc = {
   uploadFile,
@@ -221,4 +277,5 @@ export const fileRpc = {
   deleteFile,
   pollFileStatus,
   uploadAndWait,
+  listFiles,
 };
