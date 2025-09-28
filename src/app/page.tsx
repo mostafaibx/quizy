@@ -1,4 +1,7 @@
 import { PdfUpload } from "@/components/pdf-upload";
+import { Button } from "@/components/ui/button";
+import { FolderOpen } from "lucide-react";
+import Link from "next/link";
 
 export default function Home() {
   return (
@@ -15,6 +18,14 @@ export default function Home() {
             </p>
           </div>
           <PdfUpload />
+          <div className="flex gap-4">
+            <Link href="/files">
+              <Button variant="outline" size="lg">
+                <FolderOpen className="w-4 h-4 mr-2" />
+                View All Files
+              </Button>
+            </Link>
+          </div>
         </div>
       </div>
     </div>
