@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { fileRpc } from "@/lib/rpc";
 import type { FileStatusResponse, ParsedContent } from "@/lib/rpc/files";
+import { useTranslations } from "next-intl";
 
 interface UploadedFile {
   id: string;
@@ -26,6 +27,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
+  const t = useTranslations('upload');
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -45,7 +47,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
       setFiles((prev) =>
         prev.map((f) =>
           f.id === uploadedFile.id
-            ? { ...f, status: "uploading", progress: 10, message: "Uploading file..." }
+            ? { ...f, status: "uploading", progress: 10, message: t('uploading') }
             : f
         )
       );
@@ -78,7 +80,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
                 ...f,
                 status: "success",
                 progress: 100,
-                message: "File processed successfully",
+                message: t('fileProcessed'),
                 dbFileId: result.file.id,
                 parsedContent: result.content,
               }
@@ -119,7 +121,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
     });
 
     if (validFiles.length === 0) {
-      alert("Please upload valid files (PDF, TXT, DOC, DOCX) under 10MB");
+      alert(t('invalidFile'));
       return;
     }
 
@@ -189,10 +191,10 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
       // Simulate quiz generation
       await new Promise(resolve => setTimeout(resolve, 2000));
 
-      alert("Quiz generation would happen here with the parsed content!");
+      alert(t('generateQuiz') + "!");
     } catch (error) {
       console.error("Failed to generate quiz:", error);
-      alert("Failed to generate quiz");
+      alert(t('error'));
     } finally {
       setIsGeneratingQuiz(false);
     }
@@ -223,9 +225,9 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
     <div className="w-full max-w-4xl mx-auto space-y-6">
       <Card>
         <CardHeader>
-          <CardTitle>Upload Documents</CardTitle>
+          <CardTitle>{t('title')}</CardTitle>
           <CardDescription>
-            Upload your PDF, TXT, DOC, or DOCX files to generate interactive quizzes using AI
+            {t('description')}
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -253,17 +255,17 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
               </div>
               <div className="space-y-2">
                 <p className="text-lg font-medium">
-                  Drag and drop files here
+                  {t('dragDropText')}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  or click to browse from your computer
+                  {t('browseText')}
                 </p>
               </div>
               <Button variant="secondary" className="pointer-events-none">
-                Select Files
+                {t('selectFiles')}
               </Button>
               <p className="text-xs text-muted-foreground">
-                PDF, TXT, DOC, DOCX • Max 10MB per file
+                {t('fileRequirements')}
               </p>
             </div>
           </div>
@@ -271,7 +273,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
           {files.length > 0 && (
             <div className="mt-6 space-y-3">
               <h3 className="text-sm font-medium text-muted-foreground">
-                Uploaded Files ({files.length})
+                {t('uploadedFiles')} ({files.length})
               </h3>
               <div className="space-y-2">
                 {files.map((uploadedFile) => (
@@ -293,7 +295,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
                         >
                           {uploadedFile.status === "uploading" || uploadedFile.status === "processing"
                             ? `${uploadedFile.progress}%`
-                            : uploadedFile.status}
+                            : t(uploadedFile.status)}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted-foreground">
@@ -310,7 +312,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
                       )}
                       {uploadedFile.status === "success" && uploadedFile.parsedContent && (
                         <p className="text-xs text-muted-foreground mt-1">
-                          {uploadedFile.parsedContent.pageCount} pages • {(uploadedFile.parsedContent.metadata?.wordCount as number) || 0} words
+                          {uploadedFile.parsedContent.pageCount} {t('pages')} • {(uploadedFile.parsedContent.metadata?.wordCount as number) || 0} {t('words')}
                         </p>
                       )}
                     </div>
@@ -343,7 +345,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
                   onClick={() => setFiles([])}
                   disabled={files.some((f) => f.status === "uploading" || f.status === "processing")}
                 >
-                  Clear All
+                  {t('clearAll')}
                 </Button>
                 <Button
                   onClick={generateQuiz}
@@ -357,10 +359,10 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
                   {isGeneratingQuiz ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Generating...
+                      {t('generating')}
                     </>
                   ) : (
-                    "Generate Quiz"
+                    t('generateQuiz')
                   )}
                 </Button>
               </div>
