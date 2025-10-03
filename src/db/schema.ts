@@ -6,6 +6,8 @@ export const users = sqliteTable("users", {
   id: text("id").primaryKey(),
   email: text("email").unique().notNull(),
   name: text("name"),
+  phone: text("phone"),
+  phoneVerified: integer("phone_verified", { mode: 'timestamp' }),
   emailVerified: integer("email_verified", { mode: 'timestamp' }),
   image: text("image"),
   password: text("password"),
