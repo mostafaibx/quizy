@@ -3,6 +3,7 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import files from './routes/files';
 import cron from './routes/cron';
+import user from './routes/user';
 import { NextRequest } from 'next/server';
 import { errorHandler, ApiErrors } from './middleware/error';
 import type { HonoEnv } from '@/types/cloudflare';
@@ -36,7 +37,8 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }));
 // Mount routes
 const routes = app
   .route('/files', files)
-  .route('/cron', cron);
+  .route('/cron', cron)
+  .route('/user', user);
 
 // 404 handler
 app.notFound((c) => {
