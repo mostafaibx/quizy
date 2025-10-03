@@ -1,61 +1,108 @@
-import type { Context } from 'hono';
 import { createMiddleware } from 'hono/factory';
 import { HTTPException } from 'hono/http-exception';
-
+import type { Context } from 'hono';
 import type { HonoEnv } from '@/types/cloudflare';
 import type { AuthenticatedUser, AuthConfig } from '@/types/auth.types';
+import { hasRole, hasAllPermissions, hasAnyPermission } from '@/lib/auth-utils';
+import { AUTH_ERRORS } from '@/lib/auth-constants';
+import { JWT } from 'next-auth/jwt';
 
 /**
- * NextAuth session validation middleware for Hono
- * Note: In Cloudflare Workers, we need to validate the session using the request context
+ * Base authentication middleware for Hono routes
+ * Validates NextAuth JWT tokens from cookies directly from Request object
  */
 export const authMiddleware = createMiddleware(async (c, next) => {
-  const requestId = c.get('requestId') ?? 'unknown';
-
   try {
-    const { validateSession } = await import('@/utils/auth');
+    // Use native Request object directly - no NextRequest needed
+    const request = c.req.raw;
 
-    // Convert Hono request to NextRequest for session validation
-    let nextRequest: import('next/server').NextRequest;
-    try {
-      const { NextRequest } = await import('next/server');
-      nextRequest = new NextRequest(c.req.raw);
-    } catch {
-      // Fallback for non-Next.js runtimes (e.g. Cloudflare Workers)
-      nextRequest = c.req.raw as unknown as import('next/server').NextRequest;
-    }
-
-    const authResult = await validateSession(nextRequest);
-    if (!authResult.success || !authResult.user) {
-      throw new HTTPException(401, { message: 'NO_SESSION' });
-    }
-
-    // Map validated user to internal type
-    const { user: validatedUser } = authResult;
-    const user: AuthenticatedUser = {
-      id: validatedUser.id,
-      email: validatedUser.email,
-      name: validatedUser.name,
-      image: validatedUser.image,
-      role: validatedUser.role,
-      permissions: validatedUser.permissions,
-    };
-
-    c.set('user', user);
-    await next();
-  } catch (error) {
-    // Log error with request ID for correlation
-    console.error(`Auth error [${requestId}]:`, error);
-
-    if (error instanceof HTTPException) {
-      // Clean error for client - don't leak internal details
-      throw new HTTPException(error.status, {
-        message: error.message === 'NO_SESSION' ? 'NO_SESSION' : 'UNAUTHORIZED',
+    // Extract token from cookies manually
+    const cookieHeader = request.headers.get('Cookie');
+    if (!cookieHeader) {
+      throw new HTTPException(401, {
+        message: AUTH_ERRORS.NO_TOKEN.message
       });
     }
 
-    // Generic error - don't leak internals
-    throw new HTTPException(500, { message: 'AUTH_ERROR' });
+    // Parse cookies
+    const cookies = cookieHeader.split(';').reduce((acc, cookie) => {
+      const [key, value] = cookie.trim().split('=');
+      if (key && value) acc[key] = value;
+      return acc;
+    }, {} as Record<string, string>);
+
+    const token = cookies['next-auth.session-token'] ||
+                 cookies['__Secure-next-auth.session-token'];
+
+    if (!token) {
+      throw new HTTPException(401, {
+        message: AUTH_ERRORS.NO_TOKEN.message
+      });
+    }
+
+    // Get secret from environment
+    const secret = c.env?.NEXTAUTH_SECRET || process.env.NEXTAUTH_SECRET;
+
+    if (!secret) {
+      console.error('NEXTAUTH_SECRET not found');
+      throw new HTTPException(500, {
+        message: AUTH_ERRORS.CONFIG_ERROR.message
+      });
+    }
+
+    try {
+      // Use next-auth's decode function which handles the special encoding
+      const { decode } = await import('next-auth/jwt');
+
+      const decoded = await decode({
+        token,
+        secret,
+      });
+
+      if (!decoded || !decoded.sub || !decoded.email) {
+        throw new HTTPException(401, {
+          message: AUTH_ERRORS.INVALID_TOKEN.message
+        });
+      }
+
+      // Check token expiry
+      if (decoded.exp && typeof decoded.exp === 'number' && decoded.exp < Date.now() / 1000) {
+        throw new HTTPException(401, {
+          message: AUTH_ERRORS.TOKEN_EXPIRED.message
+        });
+      }
+
+      // Build user object - use NextAuth's token structure (cast to any for flexibility)
+      const tokenData = decoded as JWT;
+      const user: AuthenticatedUser = {
+        id: String(tokenData.sub || tokenData.id),
+        email: String(tokenData.email),
+        name: tokenData.name ? String(tokenData.name) : undefined,
+        image: tokenData.picture || tokenData.image ? String(tokenData.picture || tokenData.image) : undefined,
+        role: tokenData.role ? String(tokenData.role) : 'user',
+        permissions: Array.isArray(tokenData.permissions)
+          ? tokenData.permissions.map(String)
+          : [],
+      };
+
+      // Set user in context for downstream handlers
+      c.set('user', user);
+      await next();
+    } catch (jwtError) {
+      console.error('JWT verification failed:', jwtError);
+      throw new HTTPException(401, {
+        message: AUTH_ERRORS.INVALID_TOKEN.message
+      });
+    }
+  } catch (error) {
+    if (error instanceof HTTPException) {
+      throw error;
+    }
+
+    console.error('Auth middleware error:', error);
+    throw new HTTPException(500, {
+      message: AUTH_ERRORS.AUTH_ERROR.message
+    });
   }
 });
 
@@ -64,36 +111,34 @@ export const authMiddleware = createMiddleware(async (c, next) => {
  */
 export function requireAuth(config?: AuthConfig) {
   return createMiddleware(async (c, next) => {
-    const requestId = c.get('requestId') ?? 'unknown';
-
     try {
       // First run the basic auth middleware
-      await authMiddleware(c, next);
+      await authMiddleware(c, () => Promise.resolve());
 
       const user = c.get('user');
       if (!user) {
-        throw new HTTPException(401, { message: 'NO_SESSION' });
+        throw new HTTPException(401, {
+          message: AUTH_ERRORS.NO_SESSION.message
+        });
       }
 
       // Check role requirements
-      if (config?.requiredRole && user.role !== config.requiredRole) {
-        console.error(`Role check failed [${requestId}]: Required ${config.requiredRole}, got ${user.role}`);
-        throw new HTTPException(403, { message: 'FORBIDDEN' });
+      if (config?.requiredRole && !hasRole(user, config.requiredRole)) {
+        throw new HTTPException(403, {
+          message: AUTH_ERRORS.FORBIDDEN.message
+        });
       }
 
       // Check permission requirements
       if (config?.requiredPermissions && config.requiredPermissions.length > 0) {
-        const userPermissions = user.permissions || [];
         const hasRequiredPermissions = config.requireAll
-          ? config.requiredPermissions.every(permission => userPermissions.includes(permission))
-          : config.requiredPermissions.some(permission => userPermissions.includes(permission));
+          ? hasAllPermissions(user, config.requiredPermissions)
+          : hasAnyPermission(user, config.requiredPermissions);
 
         if (!hasRequiredPermissions) {
-          console.error(
-            `Permission check failed [${requestId}]: Required ${config.requiredPermissions.join(', ')}, `
-            + `got ${userPermissions.join(', ')}`,
-          );
-          throw new HTTPException(403, { message: 'FORBIDDEN' });
+          throw new HTTPException(403, {
+            message: AUTH_ERRORS.INSUFFICIENT_PERMISSIONS.message
+          });
         }
       }
 
@@ -103,8 +148,10 @@ export function requireAuth(config?: AuthConfig) {
         throw error;
       }
 
-      console.error(`Auth check error [${requestId}]:`, error);
-      throw new HTTPException(500, { message: 'AUTH_ERROR' });
+      console.error('Auth check error:', error);
+      throw new HTTPException(500, {
+        message: AUTH_ERRORS.AUTH_ERROR.message
+      });
     }
   });
 }
@@ -115,7 +162,9 @@ export function requireAuth(config?: AuthConfig) {
 export function getAuthenticatedUser(c: Context<HonoEnv>): AuthenticatedUser {
   const user = c.get('user');
   if (!user) {
-    throw new HTTPException(401, { message: 'NO_SESSION' });
+    throw new HTTPException(401, {
+      message: AUTH_ERRORS.NO_SESSION.message
+    });
   }
   return user;
 }
@@ -125,16 +174,5 @@ export function getAuthenticatedUser(c: Context<HonoEnv>): AuthenticatedUser {
  */
 export const requireAdmin = requireAuth({ requiredRole: 'admin' });
 
-/**
- * Check if user has specific permission
- */
-export function hasPermission(user: AuthenticatedUser, permission: string): boolean {
-  return user.permissions?.includes(permission) ?? false;
-}
-
-/**
- * Check if user has specific role
- */
-export function hasRole(user: AuthenticatedUser, role: string): boolean {
-  return user.role === role;
-}
+// Re-export utility functions for convenience
+export { hasRole, hasPermission, hasAllPermissions, hasAnyPermission } from '@/lib/auth-utils';

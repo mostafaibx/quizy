@@ -10,13 +10,11 @@ const intlMiddleware = createIntlMiddleware({
   localeDetection: true
 });
 
-// Protected routes that require authentication
+// Protected routes that require authentication (web routes only)
 const protectedRoutes = [
   '/dashboard',
   '/files',
-  '/quiz',
-  '/api/files',
-  '/api/quiz'
+  '/quiz'
 ];
 
 const authMiddleware = withAuth(
@@ -64,11 +62,8 @@ export default function middleware(req: NextRequest) {
     pathWithoutLocale.startsWith(route)
   );
 
-  // Check if it's an auth API route
-  const isAuthApi = pathname.startsWith('/api/auth');
-
-  // Use auth middleware for protected routes and auth API
-  if (isProtectedPath || isAuthApi) {
+  // Use auth middleware for protected routes
+  if (isProtectedPath) {
     // Type assertion to handle the middleware function type
     const middleware = authMiddleware as (req: NextRequest) => ReturnType<typeof intlMiddleware>;
     return middleware(req);
@@ -82,6 +77,6 @@ export const config = {
   matcher: [
     '/',
     '/(ar|en)/:path*',
-    '/((?!_next|_vercel|.*\\..*).*)'
+    '/((?!api|_next|_vercel|.*\\..*).*)'
   ]
 };

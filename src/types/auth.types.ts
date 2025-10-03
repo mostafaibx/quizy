@@ -2,6 +2,8 @@ export interface AuthUser {
   id: string;
   email: string;
   name?: string | null;
+  phone?: string | null;
+  phoneVerified?: string | null;
   image?: string | null;
   emailVerified?: string | null;
   createdAt?: string;
@@ -36,6 +38,7 @@ export interface SignUpRequest {
   email: string;
   password: string;
   name?: string;
+  phone?: string;
 }
 
 export interface SignInRequest {

@@ -70,7 +70,7 @@ export const authOptions: NextAuthOptions = {
   pages: { signIn: "/auth/signin" },
 };
 
-export const createUser = async (email: string, password: string, name?: string) => {
+export const createUser = async (email: string, password: string, name?: string, phone?: string) => {
   const db = await getDb();
   const userId = nanoid();
 
@@ -79,6 +79,7 @@ export const createUser = async (email: string, password: string, name?: string)
     email,
     password: await bcrypt.hash(password, 12),
     name,
+    phone,
   }).returning();
 
   const { assignFreePlanToUser } = await import("@/server/services/subscription.service");
