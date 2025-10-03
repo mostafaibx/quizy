@@ -1,13 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { Menu, X, User } from "lucide-react";
+import { Menu, X, User, Phone, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession, signOut } from "next-auth/react";
 import { useTranslations, useLocale } from "next-intl";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { PhoneUpdateModal } from "@/components/phone-update-modal";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -19,10 +21,24 @@ import {
 
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [showPhoneModal, setShowPhoneModal] = useState(false);
+  const [hasPhone, setHasPhone] = useState(true);
   const { data: session } = useSession();
   const t = useTranslations('common');
   const tNav = useTranslations('navigation');
+  const tPhone = useTranslations('phoneUpdate');
   const locale = useLocale();
+
+  useEffect(() => {
+    if (session?.user?.id) {
+      fetch('/api/user/phone')
+        .then(res => res.json() as Promise<{ phone: string | null }>)
+        .then(data => {
+          setHasPhone(!!data.phone);
+        })
+        .catch(console.error);
+    }
+  }, [session]);
 
   const navItems = [
     { label: tNav('home'), href: `/${locale}` },
@@ -33,8 +49,26 @@ export function Header() {
   ];
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="container flex h-16 items-center justify-between">
+    <>
+      {session && !hasPhone && (
+        <Alert className="rounded-none border-x-0 border-t-0 bg-warning/10">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span>{tPhone('notificationMessage')}</span>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowPhoneModal(true)}
+              className="ml-4"
+            >
+              <Phone className="h-4 w-4 mr-2" />
+              {tPhone('addPhone')}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <div className="container flex h-16 items-center justify-between">
         <div className="flex items-center gap-2">
           <Image
             src="/vercel.svg"
@@ -176,6 +210,15 @@ export function Header() {
           </nav>
         </div>
       )}
-    </header>
+      </header>
+      <PhoneUpdateModal
+        open={showPhoneModal}
+        onOpenChange={setShowPhoneModal}
+        onSuccess={() => {
+          setHasPhone(true);
+          setShowPhoneModal(false);
+        }}
+      />
+    </>
   );
 }
