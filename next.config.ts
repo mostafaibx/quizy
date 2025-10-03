@@ -10,6 +10,7 @@ const nextConfig: NextConfig = {
     // Use edge-compatible runtime
     serverActions: {
       bodySizeLimit: "2mb",
+      allowedOrigins: ["localhost:3000", "http://localhost:3000"],
     },
   },
 };
