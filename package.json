@@ -54,6 +54,7 @@
     "nanoid": "^5.1.6",
     "next": "15.5.4",
     "next-auth": "^4.24.11",
+    "next-intl": "^4.3.9",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "tailwind-merge": "^3.3.1",
