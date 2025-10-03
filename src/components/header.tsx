@@ -6,6 +6,8 @@ import Image from "next/image";
 import { Menu, X, User } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useSession, signOut } from "next-auth/react";
+import { useTranslations, useLocale } from "next-intl";
+import { LanguageSwitcher } from "@/components/language-switcher";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -15,17 +17,21 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 
-const navItems = [
-  { label: "Home", href: "/" },
-  { label: "Try it now", href: "/try" },
-  { label: "Pricing", href: "/pricing" },
-  { label: "Our Services", href: "/services" },
-  { label: "Contact Us", href: "/contact" },
-];
-
 export function Header() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const { data: session } = useSession();
+  const t = useTranslations('common');
+  const tNav = useTranslations('navigation');
+  const tAuth = useTranslations('auth');
+  const locale = useLocale();
+
+  const navItems = [
+    { label: tNav('home'), href: `/${locale}` },
+    { label: tNav('tryNow'), href: `/${locale}/try` },
+    { label: tNav('pricing'), href: `/${locale}/pricing` },
+    { label: tNav('services'), href: `/${locale}/services` },
+    { label: tNav('contact'), href: `/${locale}/contact` },
+  ];
 
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
@@ -38,7 +44,7 @@ export function Header() {
             height={32}
             className="dark:invert"
           />
-          <span className="text-xl font-bold">Quizy</span>
+          <span className="text-xl font-bold">{t('appName')}</span>
         </div>
 
         <nav className="hidden md:flex items-center gap-1">
@@ -54,10 +60,11 @@ export function Header() {
         </nav>
 
         <div className="hidden md:flex items-center gap-2">
+          <LanguageSwitcher />
           {session ? (
             <>
               <Button variant="ghost" asChild>
-                <Link href="/files">My Files</Link>
+                <Link href={`/${locale}/dashboard`}>{tNav('dashboard')}</Link>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
@@ -71,14 +78,14 @@ export function Header() {
                   </DropdownMenuLabel>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem asChild>
-                    <Link href="/files">My Files</Link>
+                    <Link href={`/${locale}/dashboard`}>{tNav('dashboard')}</Link>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem
-                    onClick={() => signOut({ callbackUrl: "/" })}
+                    onClick={() => signOut({ callbackUrl: `/${locale}` })}
                     className="text-destructive"
                   >
-                    Sign Out
+                    {tNav('logout')}
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -86,10 +93,10 @@ export function Header() {
           ) : (
             <>
               <Button variant="ghost" asChild>
-                <Link href="/auth/signin">Sign In</Link>
+                <Link href={`/${locale}/auth/signin`}>{tNav('login')}</Link>
               </Button>
               <Button asChild>
-                <Link href="/auth/signup">Get Started</Link>
+                <Link href={`/${locale}/auth/signup`}>{tNav('signup')}</Link>
               </Button>
             </>
           )}
@@ -122,6 +129,7 @@ export function Header() {
               </Link>
             ))}
             <div className="flex flex-col gap-2 pt-4 border-t">
+              <LanguageSwitcher />
               {session ? (
                 <>
                   <Button
@@ -129,8 +137,8 @@ export function Header() {
                     className="w-full justify-start"
                     asChild
                   >
-                    <Link href="/files" onClick={() => setIsMobileMenuOpen(false)}>
-                      My Files
+                    <Link href={`/${locale}/dashboard`} onClick={() => setIsMobileMenuOpen(false)}>
+                      {tNav('dashboard')}
                     </Link>
                   </Button>
                   <Button
@@ -138,10 +146,10 @@ export function Header() {
                     className="w-full justify-start"
                     onClick={() => {
                       setIsMobileMenuOpen(false);
-                      signOut({ callbackUrl: "/" });
+                      signOut({ callbackUrl: `/${locale}` });
                     }}
                   >
-                    Sign Out
+                    {tNav('logout')}
                   </Button>
                 </>
               ) : (
@@ -151,16 +159,16 @@ export function Header() {
                     className="w-full justify-start"
                     asChild
                   >
-                    <Link href="/auth/signin" onClick={() => setIsMobileMenuOpen(false)}>
-                      Sign In
+                    <Link href={`/${locale}/auth/signin`} onClick={() => setIsMobileMenuOpen(false)}>
+                      {tNav('login')}
                     </Link>
                   </Button>
                   <Button
                     className="w-full justify-start"
                     asChild
                   >
-                    <Link href="/auth/signup" onClick={() => setIsMobileMenuOpen(false)}>
-                      Get Started
+                    <Link href={`/${locale}/auth/signup`} onClick={() => setIsMobileMenuOpen(false)}>
+                      {tNav('signup')}
                     </Link>
                   </Button>
                 </>

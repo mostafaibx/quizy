@@ -18,7 +18,11 @@ interface UploadedFile {
   parsedContent?: ParsedContent;
 }
 
-export function PdfUpload() {
+interface PdfUploadProps {
+  onUploadComplete?: () => void;
+}
+
+export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [isDragging, setIsDragging] = useState(false);
   const [isGeneratingQuiz, setIsGeneratingQuiz] = useState(false);
@@ -112,6 +116,11 @@ export function PdfUpload() {
             : f
         )
       );
+
+      // Call the upload complete callback if provided
+      if (onUploadComplete) {
+        onUploadComplete();
+      }
     } catch (error) {
       console.error("Upload failed:", error);
       setFiles((prev) =>
