@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter, usePathname } from "next/navigation";
 import {
   FileText,
   Download,
@@ -44,6 +45,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { fileRpc } from "@/lib/rpc";
 import type { ListFilesResponse } from "@/lib/rpc/files";
+import { useTranslations } from "next-intl";
 
 interface FilesListProps {
   userId?: string;
@@ -65,6 +67,10 @@ export function FilesList({
   const [deletingFiles, setDeletingFiles] = useState<Set<string>>(new Set());
   const [offset, setOffset] = useState(0);
   const limit = 12;
+  const t = useTranslations('files');
+  const tCommon = useTranslations('common');
+  const router = useRouter();
+  const pathname = usePathname();
 
   const fetchFiles = useCallback(async () => {
     try {
@@ -81,7 +87,15 @@ export function FilesList({
       setTotal(response.total);
     } catch (err) {
       console.error("Failed to fetch files:", err);
-      setError(err instanceof Error ? err.message : "Failed to load files");
+
+      // Handle 404 as empty state, not an error
+      if (err instanceof Error && err.message.includes('404')) {
+        setFiles([]);
+        setTotal(0);
+        setError(null);
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to load files");
+      }
     } finally {
       setLoading(false);
     }
@@ -92,7 +106,7 @@ export function FilesList({
   }, [fetchFiles]);
 
   const handleDelete = async (fileId: string) => {
-    if (!confirm("Are you sure you want to delete this file?")) return;
+    if (!confirm(t('confirmDelete'))) return;
 
     setDeletingFiles((prev) => new Set(prev).add(fileId));
     try {
@@ -100,7 +114,7 @@ export function FilesList({
       await fetchFiles();
     } catch (err) {
       console.error("Failed to delete file:", err);
-      alert("Failed to delete file");
+      alert(t('deleteFailed'));
     } finally {
       setDeletingFiles((prev) => {
         const next = new Set(prev);
@@ -127,7 +141,7 @@ export function FilesList({
       }
     } catch (err) {
       console.error("Failed to download file:", err);
-      alert("Failed to download file content");
+      alert(t('downloadFailed'));
     }
   };
 
@@ -147,12 +161,12 @@ export function FilesList({
 
     if (diffHours < 1) {
       const diffMins = Math.floor(diffMs / (1000 * 60));
-      return `${diffMins} ${diffMins === 1 ? "minute" : "minutes"} ago`;
+      return t('minutesAgo', { count: diffMins });
     } else if (diffHours < 24) {
-      return `${diffHours} ${diffHours === 1 ? "hour" : "hours"} ago`;
+      return t('hoursAgo', { count: diffHours });
     } else if (diffHours < 168) {
       const diffDays = Math.floor(diffHours / 24);
-      return `${diffDays} ${diffDays === 1 ? "day" : "days"} ago`;
+      return t('daysAgo', { count: diffDays });
     } else {
       return date.toLocaleDateString("en-US", {
         month: "short",
@@ -203,6 +217,12 @@ export function FilesList({
     file.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleFileClick = (fileId: string) => {
+    const locale = pathname.split('/')[1];
+    router.push(`/${locale}/dashboard/files/${fileId}`);
+    onFileSelect?.(fileId);
+  };
+
   if (loading && files.length === 0) {
     return (
       <Card>
@@ -220,7 +240,7 @@ export function FilesList({
           <AlertCircle className="w-12 h-12 text-destructive mx-auto mb-4" />
           <p className="text-destructive">{error}</p>
           <Button onClick={fetchFiles} className="mt-4">
-            Retry
+            {t('retry')}
           </Button>
         </CardContent>
       </Card>
@@ -233,16 +253,16 @@ export function FilesList({
         <CardHeader>
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div>
-              <CardTitle>Your Files</CardTitle>
+              <CardTitle>{t('title')}</CardTitle>
               <CardDescription>
-                {total} {total === 1 ? "file" : "files"} uploaded
+                {t('filesCount', { count: total })}
               </CardDescription>
             </div>
             <div className="flex flex-col sm:flex-row gap-2">
               <div className="relative">
                 <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
-                  placeholder="Search files..."
+                  placeholder={t('searchPlaceholder')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   className="pl-8 w-full sm:w-[200px]"
@@ -251,14 +271,14 @@ export function FilesList({
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-[140px]">
                   <Filter className="w-4 h-4 mr-2" />
-                  <SelectValue placeholder="Filter status" />
+                  <SelectValue placeholder={t('filterStatus')} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All Files</SelectItem>
-                  <SelectItem value="completed">Completed</SelectItem>
-                  <SelectItem value="processing">Processing</SelectItem>
-                  <SelectItem value="pending">Pending</SelectItem>
-                  <SelectItem value="error">Error</SelectItem>
+                  <SelectItem value="all">{t('allFiles')}</SelectItem>
+                  <SelectItem value="completed">{t('completed')}</SelectItem>
+                  <SelectItem value="processing">{t('processing')}</SelectItem>
+                  <SelectItem value="pending">{t('pending')}</SelectItem>
+                  <SelectItem value="error">{t('error')}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -270,12 +290,12 @@ export function FilesList({
               <FileIcon className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-muted-foreground">
                 {searchQuery
-                  ? "No files match your search"
-                  : "No files uploaded yet"}
+                  ? t('noFilesMatchSearch')
+                  : t('noFiles')}
               </p>
               {!searchQuery && (
                 <p className="text-sm text-muted-foreground mt-2">
-                  Upload your first document to get started
+                  {t('uploadDescription')}
                 </p>
               )}
             </div>
@@ -285,7 +305,7 @@ export function FilesList({
                 <Card
                   key={file.id}
                   className="group hover:shadow-lg transition-all cursor-pointer"
-                  onClick={() => onFileSelect?.(file.id)}
+                  onClick={() => handleFileClick(file.id)}
                 >
                   <CardContent className="p-4">
                     <div className="flex items-start justify-between mb-3">
@@ -301,7 +321,7 @@ export function FilesList({
                               variant={getStatusColor(file.status)}
                               className="text-xs"
                             >
-                              {file.status}
+                              {t(file.status)}
                             </Badge>
                           </div>
                         </div>
@@ -323,7 +343,7 @@ export function FilesList({
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                            <DropdownMenuLabel>{tCommon('actions')}</DropdownMenuLabel>
                             <DropdownMenuSeparator />
                             {file.hasContent && (
                               <DropdownMenuItem
@@ -333,17 +353,17 @@ export function FilesList({
                                 }}
                               >
                                 <Download className="mr-2 h-4 w-4" />
-                                Download Content
+                                {t('downloadContent')}
                               </DropdownMenuItem>
                             )}
                             <DropdownMenuItem
                               onClick={(e) => {
                                 e.stopPropagation();
-                                onFileSelect?.(file.id);
+                                handleFileClick(file.id);
                               }}
                             >
                               <FileCheck className="mr-2 h-4 w-4" />
-                              View Details
+                              {t('viewDetails')}
                             </DropdownMenuItem>
                             <DropdownMenuItem
                               className="text-destructive"
@@ -353,7 +373,7 @@ export function FilesList({
                               }}
                             >
                               <Trash2 className="mr-2 h-4 w-4" />
-                              Delete
+                              {tCommon('delete')}
                             </DropdownMenuItem>
                           </DropdownMenuContent>
                         </DropdownMenu>
@@ -369,7 +389,7 @@ export function FilesList({
                         {file.pageCount && (
                           <div className="flex items-center gap-1">
                             <FileText className="w-3 h-3" />
-                            <span>{file.pageCount} pages</span>
+                            <span>{t('pagesCount', { count: file.pageCount })}</span>
                           </div>
                         )}
                       </div>
@@ -380,7 +400,7 @@ export function FilesList({
                       {file.hasContent && (
                         <div className="flex items-center gap-1 text-green-600">
                           <FileCheck className="w-3 h-3" />
-                          <span>Content available</span>
+                          <span>{t('contentAvailable')}</span>
                         </div>
                       )}
                     </div>
@@ -397,18 +417,17 @@ export function FilesList({
                 onClick={() => setOffset(Math.max(0, offset - limit))}
                 disabled={offset === 0}
               >
-                Previous
+                {tCommon('previous')}
               </Button>
               <span className="text-sm text-muted-foreground">
-                Page {Math.floor(offset / limit) + 1} of{" "}
-                {Math.ceil(total / limit)}
+                {t('pageInfo', { current: Math.floor(offset / limit) + 1, total: Math.ceil(total / limit) })}
               </span>
               <Button
                 variant="outline"
                 onClick={() => setOffset(offset + limit)}
                 disabled={offset + limit >= total}
               >
-                Next
+                {tCommon('next')}
               </Button>
             </div>
           )}
