@@ -4,7 +4,7 @@ import { useState } from "react";
 import { signIn } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { User, Mail, Lock, KeyRound, Loader2 } from "lucide-react";
+import { User, Mail, Lock, KeyRound, Phone, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,6 +22,7 @@ export function SignUpForm({ callbackUrl, onError }: SignUpFormProps) {
   const t = useTranslations('auth');
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +50,7 @@ export function SignUpForm({ callbackUrl, onError }: SignUpFormProps) {
     }
 
     try {
-      const signUpData: SignUpRequest = { email, password, name };
+      const signUpData: SignUpRequest = { email, password, name, phone };
       const response = await fetch("/api/auth/signup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -109,6 +110,20 @@ export function SignUpForm({ callbackUrl, onError }: SignUpFormProps) {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           required
+          disabled={isLoading}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label htmlFor="phone" className="flex items-center gap-2">
+          <Phone className="h-4 w-4" />
+          {t('phone')}
+        </Label>
+        <Input
+          id="phone"
+          type="tel"
+          placeholder={t('phonePlaceholder')}
+          value={phone}
+          onChange={(e) => setPhone(e.target.value)}
           disabled={isLoading}
         />
       </div>

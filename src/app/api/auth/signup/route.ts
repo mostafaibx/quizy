@@ -7,7 +7,7 @@ import type { SignUpRequest, SignUpResponse } from "@/types/auth.types";
 
 export async function POST(request: NextRequest) {
   try {
-    const { email, password, name } = await request.json() as SignUpRequest;
+    const { email, password, name, phone } = await request.json() as SignUpRequest;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -31,7 +31,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await createUser(email, password, name);
+    const user = await createUser(email, password, name, phone);
 
     const response: SignUpResponse = {
       user: {
