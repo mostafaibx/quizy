@@ -1,21 +1,25 @@
 import { Hono } from 'hono';
 import * as fileProcessor from '../services/processing/file-processor.service';
-import { verifyQStashSignature, extractUserId } from '../middleware/qstash-auth';
+import { verifyQStashSignature } from '../middleware/qstash-auth';
 import { ApiErrors } from '../middleware/error';
 import type { HonoEnv } from '@/types/cloudflare';
-import { authMiddleware } from '../middleware/auth';
+import { requireAuth } from '../middleware/auth';
 
 const app = new Hono<HonoEnv>()
 
 // Upload file
 .post(
   '/upload',
-  authMiddleware,
-   extractUserId, 
+  requireAuth(),
    async (c) => {
   const formData = await c.req.formData();
   const file = formData.get('file') as File;
-  const userId = c.get('userId') as string;
+  const user = c.get('user');
+  const userId = user?.id;
+
+  if (!userId) {
+    throw ApiErrors.unauthorized('User not authenticated');
+  }
 
   if (!file) {
     throw ApiErrors.badRequest('No file provided');
@@ -31,7 +35,7 @@ const app = new Hono<HonoEnv>()
 })
 
 // Process file (QStash webhook)
-.post('/process', authMiddleware, verifyQStashSignature, async (c) => {
+.post('/process', verifyQStashSignature, async (c) => {
   const data = c.get('parsedBody') as {
     fileId: string;
     r2Key: string;
@@ -53,7 +57,7 @@ const app = new Hono<HonoEnv>()
 })
 
 // Get file with content
-.get('/:id', authMiddleware, async (c) => {
+.get('/:id', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const result = await fileProcessor.getFileWithContent(c.env, fileId);
 
@@ -68,7 +72,7 @@ const app = new Hono<HonoEnv>()
 })
 
 // Get file status
-.get('/:id/status', authMiddleware, async (c) => {
+.get('/:id/status', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const result = await fileProcessor.getFileStatus(c.env, fileId);
 
@@ -83,7 +87,7 @@ const app = new Hono<HonoEnv>()
 })
 
 // Delete file
-.delete('/:id', authMiddleware, async (c) => {
+.delete('/:id', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const result = await fileProcessor.deleteFile(c.env, fileId);
 
@@ -98,8 +102,13 @@ const app = new Hono<HonoEnv>()
 })
 
 // List files for user
-.get('/', authMiddleware, extractUserId, async (c) => {
-  const userId = c.get('userId') as string;
+.get('/', requireAuth(), async (c) => {
+  const user = c.get('user');
+  const userId = user?.id;
+
+  if (!userId) {
+    throw ApiErrors.unauthorized('User not authenticated');
+  }
   const limit = parseInt(c.req.query('limit') || '20', 10);
   const offset = parseInt(c.req.query('offset') || '0', 10);
   const status = c.req.query('status');
