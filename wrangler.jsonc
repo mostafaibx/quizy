@@ -48,10 +48,11 @@
     "NEXT_PUBLIC_WEBAPP_ENV": "local",
     "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
     "ALLOWED_ORIGINS": "http://localhost:3000",
-    "QSTASH_URL": "https://qstash.upstash.io",
-    "QSTASH_TOKEN": "eyJVc2VySUQiOiI3MmE0ZDliYy1lN2RlLTRlNzItOWQ0OC00MDEzMDQ0M2E0YWEiLCJQYXNzd29yZCI6IjZkNzZkYmJkZWY5OTQxYTM5MDI0MGQ0ZjQ4MWE2NjhmIn0=",
-    "QSTASH_CURRENT_SIGNING_KEY": "sig_7hfY7bUHoKhj71j3iNEokZuDhRSD",
-    "QSTASH_NEXT_SIGNING_KEY": "sig_79THcqQKe1enonZSTmyNRRRDUUfB"
+    "NEXTAUTH_SECRET": "my-secret",
+    "QSTASH_TOKEN": "eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3JkIjoiZGVmYXVsdFBhc3N3b3JkIn0=",
+    "QSTASH_CURRENT_SIGNING_KEY": "sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r",
+    "QSTASH_NEXT_SIGNING_KEY": "sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs",
+    "QSTASH_URL": "http://localhost:8080"
   },
   "env": {
     "development": {
@@ -59,7 +60,20 @@
         "NODE_ENV": "development",
         "NEXT_PUBLIC_WEBAPP_ENV": "local",
         "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
-        "ALLOWED_ORIGINS": "http://localhost:3000"
+        "ALLOWED_ORIGINS": "http://localhost:3000",
+        "NEXTAUTH_SECRET": "my-secret"
+      }
+    },
+    "production": {
+      "vars": {
+        "NODE_ENV": "production",
+        "NEXT_PUBLIC_WEBAPP_ENV": "production",
+        "NEXT_PUBLIC_APP_URL": "https://quizy.workers.dev",
+        "ALLOWED_ORIGINS": "https://quizy.workers.dev",
+        "QSTASH_URL": "https://qstash.upstash.io",
+        "QSTASH_TOKEN": "eyJVc2VySUQiOiI3MmE0ZDliYy1lN2RlLTRlNzItOWQ0OC00MDEzMDQ0M2E0YWEiLCJQYXNzd29yZCI6IjZkNzZkYmJkZWY5OTQxYTM5MDI0MGQ0ZjQ4MWE2NjhmIn0=",
+        "QSTASH_CURRENT_SIGNING_KEY": "sig_7hfY7bUHoKhj71j3iNEokZuDhRSD",
+        "QSTASH_NEXT_SIGNING_KEY": "sig_79THcqQKe1enonZSTmyNRRRDUUfB"
       }
     }
   }
