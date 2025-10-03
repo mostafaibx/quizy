@@ -3,6 +3,7 @@ import { getMessages } from 'next-intl/server';
 import { notFound } from 'next/navigation';
 import { Header } from "@/components/header";
 import { locales, localeDirections, Locale } from '@/i18n/config';
+import { Toaster } from 'sonner';
 
 export default async function LocaleLayout({
   children,
@@ -25,6 +26,7 @@ export default async function LocaleLayout({
       <div dir={direction}>
         <Header />
         {children}
+        <Toaster position="top-center" richColors />
       </div>
     </NextIntlClientProvider>
   );
