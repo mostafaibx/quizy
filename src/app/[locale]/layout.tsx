@@ -6,11 +6,13 @@ import { locales, localeDirections, Locale } from '@/i18n/config';
 
 export default async function LocaleLayout({
   children,
-  params: { locale }
+  params
 }: {
   children: React.ReactNode;
-  params: { locale: string };
+  params: Promise<{ locale: string }>;
 }) {
+  const { locale } = await params;
+
   if (!locales.includes(locale as string as Locale)) {
     notFound();
   }

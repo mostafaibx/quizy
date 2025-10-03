@@ -39,38 +39,7 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
     setIsDragging(false);
   }, []);
 
-  const processFiles = useCallback(async (fileList: FileList) => {
-    const validFiles = Array.from(fileList).filter((file) => {
-      const validTypes = [
-        "application/pdf",
-        "text/plain",
-        "application/msword",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      ];
-      return validTypes.includes(file.type) && file.size <= 10 * 1024 * 1024;
-    });
-
-    if (validFiles.length === 0) {
-      alert("Please upload valid files (PDF, TXT, DOC, DOCX) under 10MB");
-      return;
-    }
-
-    const newFiles: UploadedFile[] = validFiles.map((file) => ({
-      id: Math.random().toString(36).substring(7),
-      file,
-      status: "uploading" as const,
-      progress: 0,
-    }));
-
-    setFiles((prev) => [...prev, ...newFiles]);
-
-    // Process each file
-    for (const uploadedFile of newFiles) {
-      await uploadFile(uploadedFile);
-    }
-  }, []);
-
-  const uploadFile = async (uploadedFile: UploadedFile) => {
+  const uploadFile = useCallback(async (uploadedFile: UploadedFile) => {
     try {
       // Start upload
       setFiles((prev) =>
@@ -136,7 +105,38 @@ export function PdfUpload({ onUploadComplete }: PdfUploadProps = {}) {
         )
       );
     }
-  };
+  }, [onUploadComplete]);
+
+  const processFiles = useCallback(async (fileList: FileList) => {
+    const validFiles = Array.from(fileList).filter((file) => {
+      const validTypes = [
+        "application/pdf",
+        "text/plain",
+        "application/msword",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      ];
+      return validTypes.includes(file.type) && file.size <= 10 * 1024 * 1024;
+    });
+
+    if (validFiles.length === 0) {
+      alert("Please upload valid files (PDF, TXT, DOC, DOCX) under 10MB");
+      return;
+    }
+
+    const newFiles: UploadedFile[] = validFiles.map((file) => ({
+      id: Math.random().toString(36).substring(7),
+      file,
+      status: "uploading" as const,
+      progress: 0,
+    }));
+
+    setFiles((prev) => [...prev, ...newFiles]);
+
+    // Process each file
+    for (const uploadedFile of newFiles) {
+      await uploadFile(uploadedFile);
+    }
+  }, [uploadFile]);
 
   const handleDrop = useCallback(
     (e: React.DragEvent) => {

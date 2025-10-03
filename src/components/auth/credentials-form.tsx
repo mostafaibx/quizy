@@ -41,7 +41,7 @@ export function CredentialsForm({ callbackUrl, onError }: CredentialsFormProps) 
         router.push(callbackUrl || `/${locale}/dashboard`);
         router.refresh();
       }
-    } catch (error) {
+    } catch {
       onError(t('anErrorOccurred'));
     } finally {
       setIsLoading(false);

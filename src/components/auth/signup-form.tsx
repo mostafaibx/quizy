@@ -74,7 +74,7 @@ export function SignUpForm({ callbackUrl, onError }: SignUpFormProps) {
           router.refresh();
         }
       }
-    } catch (error) {
+    } catch {
       onError(t('anErrorOccurred'));
     } finally {
       setIsLoading(false);

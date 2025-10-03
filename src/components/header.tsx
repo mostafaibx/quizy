@@ -22,7 +22,6 @@ export function Header() {
   const { data: session } = useSession();
   const t = useTranslations('common');
   const tNav = useTranslations('navigation');
-  const tAuth = useTranslations('auth');
   const locale = useLocale();
 
   const navItems = [
