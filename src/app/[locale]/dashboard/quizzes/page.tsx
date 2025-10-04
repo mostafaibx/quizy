@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, use } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { QuizList } from '@/components/quiz-list';
 import { QuizGenerationDialog } from '@/components/quiz-generation-dialog';
@@ -8,7 +8,12 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, Sparkles } from 'lucide-react';
 import { useTranslations } from 'next-intl';
 
-export default function QuizzesPage() {
+interface PageProps {
+  params: Promise<{ locale: string }>;
+}
+
+export default function QuizzesPage({ params }: PageProps) {
+  const { locale } = use(params);
   const t = useTranslations('quiz');
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -33,7 +38,7 @@ export default function QuizzesPage() {
   }
 
   const handleQuizSelect = (quizId: string) => {
-    router.push(`/quiz/${quizId}`);
+    router.push(`/${locale}/dashboard/quiz/${quizId}`);
   };
 
   const handleGenerateNew = () => {
@@ -79,7 +84,7 @@ export default function QuizzesPage() {
         onClose={() => setShowGenerateDialog(false)}
         onQuizGenerated={(quizId: string) => {
           setShowGenerateDialog(false);
-          router.push(`/quiz/${quizId}`);
+          router.push(`/${locale}/dashboard/quiz/${quizId}`);
         }}
       />
     </div>
