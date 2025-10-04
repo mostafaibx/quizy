@@ -21,11 +21,15 @@ import {
   CheckCircle,
   Clock,
   FileCheck,
+  Sparkles,
+  Brain,
 } from "lucide-react";
 import { fileRpc } from "@/lib/rpc";
 import type { FileWithContent } from "@/lib/rpc/files";
 import { useTranslations } from "next-intl";
 import { useToast } from "@/hooks/use-toast";
+import { QuizGenerationDialog } from "@/components/quiz-generation-dialog";
+import { useQuiz } from "@/hooks/use-quiz";
 
 interface FileViewerPageProps {
   params: Promise<{ id: string; locale: string }>;
@@ -36,11 +40,14 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
   const [fileData, setFileData] = useState<FileWithContent | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [showQuizDialog, setShowQuizDialog] = useState(false);
   const t = useTranslations('fileViewer');
   const tCommon = useTranslations('common');
   const tNav = useTranslations('navigation');
+  const tQuiz = useTranslations('quiz');
   const { toast } = useToast();
   const router = useRouter();
+  const { quizzes, fetchFileQuizzes } = useQuiz({ fileId: id });
 
   useEffect(() => {
     fetchFileData();
@@ -100,6 +107,18 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
 
   const handleBack = () => {
     router.push(`/${locale}/dashboard`);
+  };
+
+  const handleQuizGenerated = (quizId: string) => {
+    toast({
+      title: tQuiz('generation.completed'),
+      description: tQuiz('generation.viewQuiz'),
+      duration: 3000,
+    });
+    // Refresh quizzes list
+    fetchFileQuizzes(id);
+    // Optionally navigate to quiz page
+    // router.push(`/${locale}/dashboard/quiz/${quizId}`);
   };
 
   const formatFileSize = (bytes: number) => {
@@ -231,6 +250,23 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
                     <Download className="w-4 h-4 mr-2" />
                     {tCommon('download')}
                   </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => router.push(`${locale}/dashboard/quizzes?fileId=${fileData.file.id}`)}
+                    variant="outline"
+                    className="mr-2"
+                  >
+                    <Brain className="w-4 h-4 mr-2" />
+                    View Quizzes
+                  </Button>
+                  <Button
+                    size="sm"
+                    onClick={() => setShowQuizDialog(true)}
+                    className="bg-primary text-primary-foreground"
+                  >
+                    <Sparkles className="w-4 h-4 mr-2" />
+                    {tQuiz('generation.generate')}
+                  </Button>
                 </>
               )}
             </div>
@@ -302,6 +338,18 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
           )}
         </CardContent>
       </Card>
+
+      {/* Quiz Generation Dialog */}
+      {fileData && (
+        <QuizGenerationDialog
+          fileId={id}
+          fileName={fileData.file.name}
+          totalPages={fileData.file.pageCount || 1}
+          isOpen={showQuizDialog}
+          onClose={() => setShowQuizDialog(false)}
+          onQuizGenerated={handleQuizGenerated}
+        />
+      )}
     </div>
   );
 }
