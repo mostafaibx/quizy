@@ -261,5 +261,57 @@
     "totalQuizzes": "إجمالي الاختبارات",
     "avgScore": "متوسط النتيجة",
     "documentsUploaded": "المستندات المرفوعة"
+  },
+  "quiz": {
+    "generation": {
+      "title": "إنشاء اختبار",
+      "description": "إنشاء اختبار من {fileName}",
+      "generate": "إنشاء اختبار",
+      "generating": "جارٍ الإنشاء...",
+      "fromPage": "من الصفحة",
+      "toPage": "إلى الصفحة",
+      "numQuestions": "عدد الأسئلة",
+      "difficulty": "الصعوبة",
+      "difficulties": {
+        "easy": "سهل",
+        "medium": "متوسط",
+        "hard": "صعب",
+        "mixed": "مختلط"
+      },
+      "language": "اللغة",
+      "questionTypes": "أنواع الأسئلة",
+      "types": {
+        "multipleChoice": "اختيار من متعدد",
+        "trueFalse": "صواب/خطأ",
+        "shortAnswer": "إجابة قصيرة"
+      },
+      "includeExplanations": "تضمين الشروحات",
+      "started": "بدأ إنشاء الاختبار! قد يستغرق هذا بضع لحظات.",
+      "completed": "تم إنشاء الاختبار بنجاح!",
+      "viewQuiz": "اعرض اختبارك للبدء في التدريب"
+    },
+    "status": {
+      "ready": "جاهز",
+      "draft": "مسودة",
+      "archived": "مؤرشف",
+      "queued": "في الانتظار",
+      "processing": "قيد المعالجة",
+      "completed": "مكتمل",
+      "failed": "فشل"
+    },
+    "list": {
+      "noQuizzes": "لا توجد اختبارات بعد",
+      "generateFirst": "أنشئ أول اختبار لك للبدء في التعلم",
+      "untitled": "اختبار بدون عنوان",
+      "questions": "أسئلة",
+      "pages": "الصفحات {from}-{to}"
+    },
+    "errors": {
+      "selectQuestionTypes": "الرجاء اختيار نوع سؤال واحد على الأقل",
+      "generationFailed": "فشل إنشاء الاختبار. حاول مرة أخرى.",
+      "statusCheckFailed": "فشل التحقق من حالة الإنشاء",
+      "timeout": "انتهت مهلة إنشاء الاختبار. حاول مرة أخرى.",
+      "loadFailed": "فشل تحميل الاختبارات"
+    }
   }
 }

@@ -261,5 +261,57 @@
     "totalQuizzes": "Total Quizzes",
     "avgScore": "Average Score",
     "documentsUploaded": "Documents Uploaded"
+  },
+  "quiz": {
+    "generation": {
+      "title": "Generate Quiz",
+      "description": "Generate a quiz from {fileName}",
+      "generate": "Generate Quiz",
+      "generating": "Generating...",
+      "fromPage": "From Page",
+      "toPage": "To Page",
+      "numQuestions": "Number of Questions",
+      "difficulty": "Difficulty",
+      "difficulties": {
+        "easy": "Easy",
+        "medium": "Medium",
+        "hard": "Hard",
+        "mixed": "Mixed"
+      },
+      "language": "Language",
+      "questionTypes": "Question Types",
+      "types": {
+        "multipleChoice": "Multiple Choice",
+        "trueFalse": "True/False",
+        "shortAnswer": "Short Answer"
+      },
+      "includeExplanations": "Include Explanations",
+      "started": "Quiz generation started! This may take a few moments.",
+      "completed": "Quiz generated successfully!",
+      "viewQuiz": "View your quiz to start practicing"
+    },
+    "status": {
+      "ready": "Ready",
+      "draft": "Draft",
+      "archived": "Archived",
+      "queued": "Queued",
+      "processing": "Processing",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "list": {
+      "noQuizzes": "No quizzes yet",
+      "generateFirst": "Generate your first quiz to start learning",
+      "untitled": "Untitled Quiz",
+      "questions": "questions",
+      "pages": "Pages {from}-{to}"
+    },
+    "errors": {
+      "selectQuestionTypes": "Please select at least one question type",
+      "generationFailed": "Failed to generate quiz. Please try again.",
+      "statusCheckFailed": "Failed to check generation status",
+      "timeout": "Quiz generation timed out. Please try again.",
+      "loadFailed": "Failed to load quizzes"
+    }
   }
 }
