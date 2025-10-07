@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import files from './routes/files';
-import cron from './routes/cron';
 import user from './routes/user';
 import quiz from './routes/quiz';
 import { NextRequest } from 'next/server';
@@ -38,7 +37,6 @@ app.get('/api/health', (c) => c.json({ status: 'ok' }));
 // Mount routes
 const routes = app
   .route('/files', files)
-  .route('/cron', cron)
   .route('/user', user)
   .route('/quiz', quiz);
 
