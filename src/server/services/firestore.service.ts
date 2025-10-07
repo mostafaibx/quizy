@@ -445,13 +445,14 @@ export const listFileQuizzesFromFirestore = async (
     throw new Error(`Firestore error: ${error}`);
   }
 
-  const data: FirestoreQueryResponse[] = await response.json();
+  const data = await response.json();
   const quizzes: QuizDocument[] = [];
 
-  for (const item of data) {
-    if (item.documents) {
-      for (const doc of item.documents) {
-        quizzes.push(firestoreDocumentToQuiz(doc));
+  // Firestore runQuery returns an array of objects, each potentially containing a 'document' field
+  if (Array.isArray(data)) {
+    for (const item of data) {
+      if (item.document) {
+        quizzes.push(firestoreDocumentToQuiz(item.document));
       }
     }
   }
