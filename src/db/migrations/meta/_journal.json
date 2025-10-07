@@ -15,6 +15,20 @@
       "when": 1759489322652,
       "tag": "0001_careful_unicorn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1759534707946,
+      "tag": "0002_tidy_pixie",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1759767138327,
+      "tag": "0003_ambiguous_shotgun",
+      "breakpoints": true
     }
   ]
 }

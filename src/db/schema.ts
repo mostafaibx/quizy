@@ -222,6 +222,37 @@ export const quizImports = sqliteTable("quiz_imports", {
   error: text("error"),
 });
 
+export const generationJobs = sqliteTable("generation_jobs", {
+  id: text("id").primaryKey(),
+  fileId: text("file_id").notNull().references(() => files.id),
+  userId: text("user_id").notNull().references(() => users.id),
+  status: text("status").notNull(), // 'queued', 'processing', 'completed', 'failed'
+  qstashMessageId: text("qstash_message_id"),
+  retryCount: integer("retry_count").default(0),
+  error: text("error"),
+  metadata: text("metadata"), // JSON for provider, model, cost, etc.
+  startedAt: integer("started_at", { mode: 'timestamp' }),
+  completedAt: integer("completed_at", { mode: 'timestamp' }),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+});
+
+export const parsingJobs = sqliteTable("parsing_jobs", {
+  id: text("id").primaryKey(),
+  fileId: text("file_id").notNull().references(() => files.id, { onDelete: "cascade" }),
+  userId: text("user_id").notNull().references(() => users.id),
+  status: text("status").notNull(), // 'queued', 'processing', 'completed', 'failed'
+  qstashMessageId: text("qstash_message_id"),
+  parserServiceUrl: text("parser_service_url"),
+  retryCount: integer("retry_count").default(0),
+  error: text("error"),
+  parsedContentR2Key: text("parsed_content_r2_key"),
+  processingMetrics: text("processing_metrics"), // JSON with duration_ms, pages_processed, etc.
+  startedAt: integer("started_at", { mode: 'timestamp' }),
+  completedAt: integer("completed_at", { mode: 'timestamp' }),
+  createdAt: text("created_at").notNull().default(sql`(datetime('now'))`),
+  updatedAt: text("updated_at").notNull().default(sql`(datetime('now'))`),
+});
+
 export type User = InferSelectModel<typeof users>;
 export type NewUser = InferInsertModel<typeof users>;
 export type Account = InferSelectModel<typeof accounts>;
@@ -264,3 +295,7 @@ export type AttemptAnswer = InferSelectModel<typeof attemptAnswers>;
 export type NewAttemptAnswer = InferInsertModel<typeof attemptAnswers>;
 export type QuizImport = InferSelectModel<typeof quizImports>;
 export type NewQuizImport = InferInsertModel<typeof quizImports>;
+export type GenerationJob = InferSelectModel<typeof generationJobs>;
+export type NewGenerationJob = InferInsertModel<typeof generationJobs>;
+export type ParsingJob = InferSelectModel<typeof parsingJobs>;
+export type NewParsingJob = InferInsertModel<typeof parsingJobs>;
