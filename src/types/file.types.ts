@@ -7,7 +7,19 @@ export interface FileValidationResult {
 export interface ParsedContent {
   text: string;
   pageCount: number;
-  metadata?: Record<string, unknown>;
+  pages?: Array<{
+    pageNumber: number;
+    content: string;
+  }>;
+  metadata?: {
+    title?: string;
+    subject?: string;
+    grade?: string;
+    language?: string;
+    wordCount?: number;
+    lineCount?: number;
+    [key: string]: unknown;
+  };
 }
 
 export interface FileStorageResult {
@@ -23,6 +35,7 @@ export interface FileMetadata {
 export interface ParsedContentStorage extends ParsedContent {
   fileId: string;
   parsedAt: string;
+  version: string;
 }
 
 export const FILE_CONSTRAINTS = {
