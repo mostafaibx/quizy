@@ -41,6 +41,8 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showQuizDialog, setShowQuizDialog] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
   const t = useTranslations('fileViewer');
   const tCommon = useTranslations('common');
   const tNav = useTranslations('navigation');
@@ -51,21 +53,68 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
 
   useEffect(() => {
     fetchFileData();
+    return () => {
+      // Cleanup polling on unmount
+      if (pollingInterval) {
+        clearInterval(pollingInterval);
+      }
+    };
   }, [id]);
 
-  const fetchFileData = async () => {
-    setLoading(true);
+  const fetchFileData = async (skipLoadingState = false) => {
+    if (!skipLoadingState) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
       const data = await fileRpc.getFileById(id);
       setFileData(data);
+
+      // Check if we need to poll for parsing status
+      const needsPolling = data.file.status === 'pending' || data.file.status === 'processing';
+
+      if (needsPolling && !isPolling) {
+        startPolling();
+      } else if (!needsPolling && isPolling) {
+        stopPolling();
+        // Show success message when processing completes
+        if (data.file.status === 'completed') {
+          toast({
+            title: t('processingComplete'),
+            description: t('processingCompleteDesc'),
+            duration: 3000,
+          });
+        }
+      }
     } catch (err) {
       console.error("Failed to fetch file data:", err);
       setError(err instanceof Error ? err.message : t('loadError'));
+      stopPolling();
     } finally {
-      setLoading(false);
+      if (!skipLoadingState) {
+        setLoading(false);
+      }
     }
+  };
+
+  const startPolling = () => {
+    if (isPolling) return;
+
+    setIsPolling(true);
+    const interval = setInterval(() => {
+      fetchFileData(true); // Skip loading state during polling
+    }, 3000); // Poll every 3 seconds
+
+    setPollingInterval(interval);
+  };
+
+  const stopPolling = () => {
+    if (pollingInterval) {
+      clearInterval(pollingInterval);
+      setPollingInterval(null);
+    }
+    setIsPolling(false);
   };
 
   const handleCopyContent = async () => {
@@ -224,6 +273,11 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
                   <Badge variant={getStatusColor(fileData.file.status)}>
                     {t(`status.${fileData.file.status}`)}
                   </Badge>
+                  {isPolling && (
+                    <span className="text-xs text-muted-foreground ml-2">
+                      ({t('refreshingStatus')}...)
+                    </span>
+                  )}
                 </div>
                 <span className="text-sm text-muted-foreground">•</span>
                 <span className="text-sm text-muted-foreground">
@@ -252,7 +306,7 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
                   </Button>
                   <Button
                     size="sm"
-                    onClick={() => router.push(`${locale}/dashboard/quizzes?fileId=${fileData.file.id}`)}
+                    onClick={() => router.push(`quizzes?fileId=${fileData.file.id}`)}
                     variant="outline"
                     className="mr-2"
                   >
@@ -310,13 +364,26 @@ export function FileViewerPage({ params }: FileViewerPageProps) {
             </>
           ) : (
             <div className="flex flex-col items-center justify-center py-16 space-y-4 border rounded-lg bg-muted/20">
-              {fileData.file.status === 'processing' ? (
+              {fileData.file.status === 'processing' || fileData.file.status === 'pending' ? (
                 <>
                   <Loader2 className="w-12 h-12 animate-spin text-primary" />
-                  <p className="text-lg font-medium">{t('processingContent')}</p>
-                  <Button onClick={fetchFileData} variant="outline">
-                    {tCommon('refresh')}
-                  </Button>
+                  <p className="text-lg font-medium">
+                    {fileData.file.status === 'pending' ? t('queuedForProcessing') : t('processingContent')}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {t('processingDescription')}
+                  </p>
+                  {!isPolling && (
+                    <Button onClick={() => fetchFileData()} variant="outline" size="sm">
+                      <Loader2 className="w-4 h-4 mr-2" />
+                      {tCommon('refresh')}
+                    </Button>
+                  )}
+                  {isPolling && (
+                    <p className="text-xs text-muted-foreground animate-pulse">
+                      {t('autoRefreshing')}
+                    </p>
+                  )}
                 </>
               ) : fileData.file.status === 'error' ? (
                 <>
