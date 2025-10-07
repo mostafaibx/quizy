@@ -87,12 +87,18 @@ router.post('/api/quiz/generate', verifyQStashSignature, async (c) => {
     const content = await contentObject.json<ProcessedFileContent>();
 
     // Validate content structure
-    const textContent = content.text || content.content;
-    if (!textContent) {
+    if (!content.text || content.text.trim().length === 0) {
       throw createError('No text content found in processed file', 400, 'INVALID_INPUT');
     }
 
-    tracker.trackStep('content_fetched', { size: textContent.length });
+    const textContent = content.text;
+
+    tracker.trackStep('content_fetched', {
+      size: textContent.length,
+      pageCount: content.pageCount,
+      hasPages: !!content.pages?.length,
+      wordCount: content.metadata?.wordCount
+    });
 
     // Generate quiz with validated API key
     const apiKey = c.env.GEMINI_API_KEY;
@@ -135,13 +141,11 @@ router.post('/api/quiz/generate', verifyQStashSignature, async (c) => {
       id: quizId,
       fileId,
       fromPage: 1,
-      toPage: content.metadata?.pageCount || 1,
+      toPage: content.pageCount || 1,
       topic: content.metadata?.subject || null,
-      model: quiz.metadata.model,
+      model: quiz.metadata.model || 'gemini-2.5-flash',
       status: 'ready',
-      createdBy: userId,
-      createdAt: now,
-      updatedAt: now
+      createdBy: userId
     });
 
     // Store questions in R2 with metadata
