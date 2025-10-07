@@ -17,6 +17,18 @@ const QuizResponseSchema = z.object({
 const buildPrompt = (request: QuizGenerationRequest): string => {
   const { content, config } = request;
 
+  // Log content info for debugging
+  console.log('[Gemini Provider] Content info:', {
+    textLength: content.text?.length || 0,
+    hasText: !!content.text,
+    first100Chars: content.text?.substring(0, 100),
+    metadata: content.metadata
+  });
+
+  if (!content.text || content.text.trim().length < 50) {
+    throw new Error(`Insufficient content for quiz generation. Content length: ${content.text?.length || 0}`);
+  }
+
   return `You are an expert educational content creator. Generate a quiz based on the following content.
 
 CONTENT:
