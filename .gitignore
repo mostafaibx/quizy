@@ -32,6 +32,9 @@ yarn-error.log*
 .env.test.local
 .env.production.local
 
+.dev.vars
+cloudflare-env.d.ts
+
 # vercel
 .vercel
 

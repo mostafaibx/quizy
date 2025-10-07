@@ -1,0 +1,23 @@
+# Local-only secrets for wrangler dev (NOT committed in real usage)
+# Copy to .dev.vars and fill real values.
+# wrangler dev will load these into the worker runtime.
+
+# Auth
+NEXTAUTH_SECRET=my-secret
+
+# Upstash QStash
+QSTASH_URL=
+QSTASH_TOKEN=
+QSTASH_CURRENT_SIGNING_KEY=
+QSTASH_NEXT_SIGNING_KEY=
+
+# Firebase Admin
+FIREBASE_PROJECT_ID=
+FIREBASE_API_KEY=
+FIREBASE_CLIENT_EMAIL=
+FIREBASE_PRIVATE_KEY=
+
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+
+GEMINI_API_KEY=
