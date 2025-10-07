@@ -6,19 +6,27 @@ export interface QuizGenerationQStashBody {
   retryCount?: number;
 }
 
-export interface ProcessedFileContent {
-  text?: string;
-  content?: string;
-  pageCount?: number;
-  metadata?: {
-    subject?: string;
-    grade?: string;
-    language?: string;
-    pageCount?: number;
-    title?: string;
-  };
-  pages?: Array<{
-    pageNumber: number;
-    content: string;
-  }>;
+import type { ParsedContent } from './file.types';
+
+export interface ProcessedFileContent extends ParsedContent {
+  fileId: string;
+  parsedAt: string;
+  version: string;
+}
+
+// QStash message status response from /v2/messages/{messageId}
+export interface QStashMessageStatusResponse {
+  messageId: string;
+  state: 'pending' | 'delivered' | 'failed' | 'retry';
+  retryCount: number;
+  createdAt: number;
+  updatedAt: number;
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: string;
+  maxRetries?: number;
+  notBefore?: number;
+  callback?: string;
+  failureCallback?: string;
 }

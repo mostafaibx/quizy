@@ -31,7 +31,15 @@ export const verifyQStashSignature = async (c: Context, next: Next) => {
   // Skip signature verification in development with local QStash
   if (env.NODE_ENV === 'development') {
     const body = await c.req.text();
-    c.set('parsedBody', JSON.parse(body));
+    console.log('[QStash Auth] Development mode - raw body:', body);
+    try {
+      const parsed = JSON.parse(body);
+      console.log('[QStash Auth] Parsed body:', parsed);
+      c.set('parsedBody', parsed);
+    } catch (error) {
+      console.error('[QStash Auth] Failed to parse body:', error);
+      c.set('parsedBody', {});
+    }
     await next();
     return;
   }
