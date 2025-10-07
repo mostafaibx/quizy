@@ -127,7 +127,8 @@
       "pending": "Pending",
       "processing": "Processing",
       "completed": "Completed",
-      "error": "Error"
+      "error": "Error",
+      "queued": "Queued"
     },
     "pages": "{{count}} page",
     "pages_plural": "{{count}} pages",
@@ -138,6 +139,12 @@
     "parsedContent": "Parsed Content",
     "parsedAt": "Parsed on {{date}}",
     "processingContent": "Processing file content...",
+    "queuedForProcessing": "Queued for processing",
+    "processingDescription": "Your document is being analyzed. This may take a few moments.",
+    "autoRefreshing": "Status updating automatically...",
+    "refreshingStatus": "Updating",
+    "processingComplete": "Processing Complete",
+    "processingCompleteDesc": "Your document has been successfully processed and is ready for quiz generation.",
     "errorContent": "Failed to process file content",
     "noContent": "No content available"
   },
@@ -311,7 +318,52 @@
       "generationFailed": "Failed to generate quiz. Please try again.",
       "statusCheckFailed": "Failed to check generation status",
       "timeout": "Quiz generation timed out. Please try again.",
-      "loadFailed": "Failed to load quizzes"
+      "loadFailed": "Failed to load quizzes",
+      "quizNotFound": "Quiz not found"
+    },
+    "viewer": {
+      "untitledQuiz": "Untitled Quiz",
+      "noDescription": "No description provided",
+      "questions": "Questions",
+      "createdOn": "Created on {date}"
+    },
+    "editor": {
+      "editQuiz": "Edit Quiz",
+      "unsavedChanges": "You have unsaved changes. Are you sure you want to leave?",
+      "saveSuccess": "Quiz saved successfully",
+      "saveFailed": "Failed to save quiz",
+      "questionUpdated": "Question updated",
+      "updateFailed": "Failed to update question",
+      "questionDeleted": "Question deleted",
+      "deleteFailed": "Failed to delete question",
+      "questionAdded": "Question added",
+      "addFailed": "Failed to add question",
+      "metadataUpdated": "Quiz details updated",
+      "confirmDeleteQuestion": "Are you sure you want to delete this question?",
+      "newQuestionTitle": "New Question",
+      "quizDetails": "Quiz Details",
+      "subject": "Subject",
+      "subjectPlaceholder": "e.g., Mathematics, Science, History",
+      "grade": "Grade Level",
+      "gradePlaceholder": "e.g., Grade 10, University",
+      "description": "Description",
+      "descriptionPlaceholder": "Brief description of the quiz",
+      "saveDetails": "Save Details",
+      "saving": "Saving...",
+      "questions": "Questions",
+      "addQuestion": "Add Question",
+      "unsaved": "Unsaved",
+      "questionType": "Question Type",
+      "questionText": "Question Text",
+      "questionPlaceholder": "Enter your question here",
+      "options": "Options",
+      "addOption": "Add Option",
+      "correctAnswer": "Correct Answer",
+      "expectedAnswer": "Expected Answer",
+      "expectedAnswerPlaceholder": "Enter the expected answer",
+      "explanation": "Explanation",
+      "explanationPlaceholder": "Explain why this is the correct answer",
+      "difficulty": "Difficulty"
     }
   }
 }
