@@ -24,6 +24,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, Sparkles } from 'lucide-react';
 import { quizRpc } from '@/lib/rpc/quiz';
 import { toast } from 'sonner';
+import { useRouter, useParams } from 'next/navigation';
 
 interface QuizGenerationDialogProps {
   fileId: string;
@@ -43,6 +44,9 @@ export function QuizGenerationDialog({
   onQuizGenerated,
 }: QuizGenerationDialogProps) {
   const t = useTranslations('quiz');
+  const router = useRouter();
+  const params = useParams();
+  const locale = params.locale as string;
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [fromPage, setFromPage] = useState(1);
@@ -98,10 +102,15 @@ export function QuizGenerationDialog({
 
             if (status.data.status === 'completed') {
               toast.success(t('generation.completed'));
-              if (status.data.metadata?.quizId && onQuizGenerated) {
-                onQuizGenerated(status.data.metadata.quizId);
+              const quizId = status.data.metadata?.quizId;
+              if (quizId) {
+                if (onQuizGenerated) {
+                  onQuizGenerated(quizId);
+                }
+                onClose();
+                // Navigate to quiz page
+                router.push(`/${locale}/dashboard/quiz/${quizId}`);
               }
-              onClose();
               return;
             }
 
