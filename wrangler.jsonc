@@ -89,7 +89,7 @@
         "QSTASH_URL": "https://qstash.upstash.io",
         "PARSER_SERVICE_URL": "https://europe-west1-quizy-474313.cloudfunctions.net/quizy-parser-service",
         "R2_PUBLIC_URL": "https://pub-3fc50c0e0f72494b93ad4ce4e1f965dc.r2.dev"
-      }
+      },"name": "quizy"
     }
   },
 }
