@@ -18,14 +18,17 @@ declare module "next-auth/jwt" {
   interface JWT { id: string }
 }
 
-export const authOptions: NextAuthOptions = {
-  adapter: DrizzleAdapter(await getDb(), {
-    usersTable: users,
-    accountsTable: accounts,
-    sessionsTable: sessions,
-    verificationTokensTable: verificationTokens,
-  }),
-  session: { strategy: "jwt" },
+export async function getAuthOptions(): Promise<NextAuthOptions> {
+  const db = await getDb();
+  
+  return {
+    adapter: DrizzleAdapter(db, {
+      usersTable: users,
+      accountsTable: accounts,
+      sessionsTable: sessions,
+      verificationTokensTable: verificationTokens,
+    }),
+    session: { strategy: "jwt" },
   providers: [
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
@@ -68,7 +71,8 @@ export const authOptions: NextAuthOptions = {
     },
   },
   pages: { signIn: "/auth/signin" },
-};
+  };
+}
 
 export const createUser = async (email: string, password: string, name?: string, phone?: string) => {
   const db = await getDb();

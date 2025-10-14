@@ -1,8 +1,9 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "./auth";
+import { getAuthOptions } from "./auth";
 import { redirect } from "next/navigation";
 
 export async function getAuthSession() {
+  const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
   return session;
 }

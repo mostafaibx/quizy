@@ -1,5 +1,5 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthOptions } from "@/lib/auth";
 import { Button } from "@/components/ui/button";
 import { FileText, LogIn, Upload, Brain, Zap } from "lucide-react";
 import Link from "next/link";
@@ -11,6 +11,7 @@ export default async function HomePage({
   params: Promise<{ locale: string }>
 }) {
   const { locale } = await params;
+  const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
   const t = await getTranslations('landing');
 

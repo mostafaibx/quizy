@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/lib/auth";
+import { getAuthOptions } from "@/lib/auth";
 
 export default async function DashboardLayout({
   children,
@@ -10,6 +10,7 @@ export default async function DashboardLayout({
   params: Promise<{ locale: string }>;
 }) {
   const { locale } = await params;
+  const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
 
   if (!session) {
