@@ -8,21 +8,42 @@ import { files, parsingJobs } from '@/db/schema';
 import { eq, desc, and } from 'drizzle-orm';
 import * as r2Storage from '../services/storage/r2.service';
 import * as qstash from '../services/queue/qstash.service';
-import type { ParsedContentStorage, AllowedFileType } from '@/types/file.types';
-import { FILE_CONSTRAINTS } from '@/types/file.types';
+import type { ParsedContentStorage } from '@/types/file.types';
 import { nanoid } from 'nanoid';
 import type { FileWithContentResponse } from '@/types/responses';
 import type { QStashMessageStatusResponse } from '@/types/qstash.types';
-import type { ParsingCallbackBody } from '@/types/parsing.types';
+import type { 
+  ParsingCallbackBody, 
+  ParsingServiceResponse,
+} from '@/types/parsing.types';
+import { USER_MESSAGES, PARSER_SERVICE_VERSION } from '../constants/files';
+import {
+  validateFileUpload,
+  getProgressInfo,
+  decodeQStashBody,
+  markParsingJobCompleted,
+  markParsingJobFailed,
+  markFileCompleted,
+  markFileFailed,
+  handleDirectProcessing,
+  handleQueuedProcessing,
+} from '../services/files/files.service';
+import { createLogger } from '../services/logger.service';
+import { createPipelineTracker } from '../services/monitoring';
+import { checkFileUploadLimit } from '../services/rate-limiter';
+
+// ============================================================================
+// ROUTES
+// ============================================================================
+
 const app = new Hono<HonoEnv>()
 
-// Upload file - Uses external parser service only
-.post(
-  '/upload',
-  requireAuth(),
-   async (c) => {
-  const formData = await c.req.formData();
-  const file = formData.get('file') as File;
+/**
+ * Upload file endpoint
+ * Handles file upload, validation, and initiates parsing via external parser service
+ * Supports both direct (< 2MB) and queued (>= 2MB) processing modes
+ */
+.post('/upload', requireAuth(), async (c) => {
   const user = c.get('user');
   const userId = user?.id;
 
@@ -30,37 +51,64 @@ const app = new Hono<HonoEnv>()
     throw ApiErrors.unauthorized('User not authenticated');
   }
 
-  if (!file) {
-    throw ApiErrors.badRequest('No file provided');
-  }
-
-  // Validate file
-  if (file.size > FILE_CONSTRAINTS.MAX_SIZE) {
-    throw ApiErrors.badRequest('File size exceeds 10MB limit');
-  }
-
-  if (!FILE_CONSTRAINTS.ALLOWED_TYPES.includes(file.type as AllowedFileType)) {
-    throw ApiErrors.badRequest('Invalid file type. Only PDF, TXT, DOC, DOCX allowed');
-  }
-
-  // Check if parser service is configured
   if (!c.env.PARSER_SERVICE_URL) {
     throw ApiErrors.internal('Parser service not configured');
   }
 
-  const db = drizzle(c.env.DB);
+  // Initialize logger and monitoring
+  const logger = createLogger('FileUpload', c.env.NODE_ENV);
+  const tracker = createPipelineTracker(c.env.ANALYTICS_ENGINE, c.env.NODE_ENV);
 
   try {
+    // Rate limiting check
+    if (c.env.KV) {
+      const userTier = 'free'; // TODO: Get from subscription service
+      const rateLimit = await checkFileUploadLimit(c.env.KV, userId, userTier);
+
+      if (!rateLimit.allowed) {
+        logger.warn('File upload rate limit exceeded', {
+          userId,
+          remaining: rateLimit.remaining,
+          resetAt: rateLimit.resetAt,
+        });
+        
+        return c.json({
+          success: false,
+          error: {
+            code: 'RATE_LIMITED',
+            message: 'Upload rate limit exceeded. Please try again later.',
+            retryAfter: rateLimit.retryAfter,
+          },
+        }, 429);
+      }
+
+      tracker.trackStep('rate_limit_passed', { remaining: rateLimit.remaining });
+    }
+
+    // Validate inputs
+    const formData = await c.req.formData();
+    const { file, language, subject, documentType } = validateFileUpload(formData);
+
+    const db = drizzle(c.env.DB);
     const fileId = nanoid();
-    console.log(`[Upload] Starting upload for file: ${file.name}, ID: ${fileId}`);
+    const parsingJobId = nanoid();
 
-    // 1. Upload to R2 first (as per api_imp.md)
-    console.log(`[Upload] Uploading to R2...`);
+    logger.info('Starting file upload', { 
+      fileName: file.name, 
+      fileId,
+      fileSize: file.size,
+      mimeType: file.type,
+    });
+    tracker.info('Upload started', { fileId, fileName: file.name, fileSize: file.size });
+
+    // Step 1: Upload file to R2
+    logger.info('Uploading to R2', { fileId });
     const { r2Key } = await r2Storage.storeFile(c.env, fileId, file);
-    console.log(`[Upload] R2 upload successful, key: ${r2Key}`);
+    logger.info('R2 upload successful', { fileId, r2Key });
+    tracker.trackStep('r2_upload_complete', { r2Key, fileSize: file.size });
 
-    // Create file record in DB
-    console.log(`[Upload] Creating file record in DB...`);
+    // Step 2: Create file record in database
+    logger.info('Creating file record in database', { fileId });
     const [newFile] = await db.insert(files).values({
       id: fileId,
       ownerId: userId,
@@ -70,12 +118,11 @@ const app = new Hono<HonoEnv>()
       mime: file.type,
       status: 'pending',
     }).returning();
-    console.log(`[Upload] File record created:`, newFile);
+    logger.info('File record created', { fileId });
+    tracker.trackStep('db_record_created', { fileId });
 
-    // Create parsing job record
-    const parsingJobId = nanoid();
-    console.log(`[Upload] Creating parsing job: ${parsingJobId}`);
-
+    // Step 3: Create parsing job record
+    logger.info('Creating parsing job', { parsingJobId, fileId });
     await db.insert(parsingJobs).values({
       id: parsingJobId,
       fileId,
@@ -83,64 +130,71 @@ const app = new Hono<HonoEnv>()
       status: 'queued',
       parserServiceUrl: c.env.PARSER_SERVICE_URL,
     });
-    console.log(`[Upload] Parsing job created`);
+    logger.info('Parsing job created', { parsingJobId });
+    tracker.trackStep('parsing_job_created', { jobId: parsingJobId });
 
-    // 2. Send to QStash (returns immediately)
-    console.log(`[Upload] Queueing to QStash...`);
-    console.log(`[Upload] QStash Config:`, {
-      url: c.env.QSTASH_URL,
-      hasToken: !!c.env.QSTASH_TOKEN,
-      parserUrl: c.env.PARSER_SERVICE_URL,
-      appUrl: c.env.NEXT_PUBLIC_APP_URL,
-    });
-
+    // Step 4: Queue parsing job via QStash
+    logger.info('Queueing to parser service', { parsingJobId, fileId });
     const queueResult = await qstash.queueParsingJob(c.env, {
       fileId,
       userId,
       r2Key,
       mimeType: file.type,
       jobId: parsingJobId,
+      language,
+      subject,
+      documentType,
+      fileSizeBytes: file.size,
       parserServiceUrl: c.env.PARSER_SERVICE_URL,
     });
-    console.log(`[Upload] QStash queue result:`, queueResult);
+    
+    logger.info('Queue result received', { 
+      success: queueResult.success, 
+      mode: queueResult.mode,
+      messageId: queueResult.messageId,
+    });
 
+    // Handle queue failure
     if (!queueResult.success) {
-      console.error(`[Upload] QStash failed:`, queueResult.error);
-      // Update job status to failed
-      await db.update(parsingJobs)
-        .set({
-          status: 'failed',
-          error: queueResult.error || 'Failed to queue parsing job',
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(parsingJobs.id, parsingJobId));
-
-      throw ApiErrors.internal(queueResult.error || 'Failed to queue parsing job');
+      logger.error('Processing failed', null, { error: queueResult.error });
+      tracker.error('Queue failed', new Error(queueResult.error || 'Unknown error'), { fileId });
+      await markParsingJobFailed(db, parsingJobId, queueResult.error || 'Failed to process file');
+      tracker.complete(false, { error: queueResult.error });
+      throw ApiErrors.internal(queueResult.error || 'Failed to process file');
     }
 
-    // 3. Save messageId to track job
-    await db.update(parsingJobs)
-      .set({
-        qstashMessageId: queueResult.messageId,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(parsingJobs.id, parsingJobId));
-
-    // 4. Return immediately to user
-    return c.json({
-      success: true,
-      data: {
-        file: newFile,
+    // Step 5: Handle response based on processing mode
+    // FLOW 1: Direct processing (< 2MB or development)
+    if (queueResult.mode === 'direct' && queueResult.parsedData) {
+      logger.info('Direct processing mode - handling response immediately', { fileId });
+      tracker.trackStep('direct_processing_mode', { fileId });
+      const result = await handleDirectProcessing(
+        c,
+        queueResult.parsedData as ParsingServiceResponse,
+        fileId,
         parsingJobId,
-        messageId: queueResult.messageId,
-        message: "Your document is being processed. We'll notify you when it's ready!",
-      },
-    });
-  } catch (error) {
-    console.error('[Upload] Full error:', error);
-    console.error('[Upload] Error stack:', error instanceof Error ? error.stack : 'No stack');
+        newFile
+      );
+      tracker.complete(true, { fileId, mode: 'direct' });
+      return result;
+    }
 
-    // If it's already an API error, throw it as-is
+    // FLOW 2: Queued processing (>= 2MB in production)
+    logger.info('Queued processing mode - will receive callback', { 
+      fileId, 
+      messageId: queueResult.messageId,
+    });
+    tracker.trackStep('queued_processing_mode', { fileId, messageId: queueResult.messageId });
+    const result = await handleQueuedProcessing(c, parsingJobId, queueResult.messageId!, newFile);
+    tracker.complete(true, { fileId, mode: 'queued' });
+    return result;
+    
+  } catch (error) {
+    logger.error('Upload failed', error instanceof Error ? error : new Error(String(error)));
+    tracker.error('Upload failed', error instanceof Error ? error : new Error(String(error)));
+    tracker.complete(false, { error: error instanceof Error ? error.message : String(error) });
+
+    // Re-throw API errors as-is
     if (error instanceof Error && error.message.includes('QStash error')) {
       throw ApiErrors.internal(error.message);
     }
@@ -148,20 +202,14 @@ const app = new Hono<HonoEnv>()
       throw error;
     }
 
-    // For any other error, log details and throw generic
     throw ApiErrors.internal('Failed to upload file: ' + (error instanceof Error ? error.message : 'Unknown error'));
   }
 })
 
-// DEPRECATED: Edge processing endpoint - no longer used
-.post('/process', verifyQStashSignature, async (c) => {
-  return c.json({
-    success: false,
-    error: 'Edge processing is deprecated. All processing now goes through external parser service.',
-  }, 410); // 410 Gone
-})
-
-// Get file with content
+/**
+ * Get file with content
+ * Returns file metadata and parsed content (if available)
+ */
 .get('/:id', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const db = drizzle(c.env.DB);
@@ -190,15 +238,21 @@ const app = new Hono<HonoEnv>()
       },
     };
 
-    if (file.status === 'completed') {
-      const content = await r2Storage.getParsedContent(c.env, fileId);
-      if (content) {
-        response.content = content;
-      }
-    } else if (file.status === 'pending' || file.status === 'processing') {
-      response.file.message = 'File is still being processed';
-    } else if (file.status === 'error') {
-      response.file.message = 'File processing failed';
+    // Attach content and status message based on file status
+    switch (file.status) {
+      case 'completed':
+        const content = await r2Storage.getParsedContent(c.env, fileId);
+        if (content) {
+          response.content = content;
+        }
+        break;
+      case 'pending':
+      case 'processing':
+        response.file.message = USER_MESSAGES.PROCESSING;
+        break;
+      case 'error':
+        response.file.message = USER_MESSAGES.FAILED;
+        break;
     }
 
     return c.json({ success: true, data: response });
@@ -206,12 +260,16 @@ const app = new Hono<HonoEnv>()
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    console.error('Error fetching file:', error);
+    const logger = createLogger('GetFile', c.env.NODE_ENV);
+    logger.error('Failed to fetch file', error instanceof Error ? error : undefined, { fileId });
     throw ApiErrors.internal('Failed to fetch file');
   }
 })
 
-// Get file status with parsing job info
+/**
+ * Get file status with parsing job info
+ * Returns detailed status information including progress
+ */
 .get('/:id/status', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const db = drizzle(c.env.DB);
@@ -227,64 +285,27 @@ const app = new Hono<HonoEnv>()
       throw ApiErrors.notFound('File', fileId);
     }
 
-    // Get latest parsing job
-    const jobs = await db
+    // Get latest parsing job for more accurate status
+    const [parsingJob] = await db
       .select()
       .from(parsingJobs)
       .where(eq(parsingJobs.fileId, fileId))
       .orderBy(desc(parsingJobs.createdAt))
       .limit(1);
 
-    const parsingJob = jobs[0] || null;
-
-    let progress = 0;
-    let message = '';
+    // Determine status and progress
     let status = file.status;
+    let progressInfo;
 
-    // Use parsing job status for better accuracy
     if (parsingJob) {
+      // Map parsing job status to file status
       status = parsingJob.status === 'completed' ? 'completed' :
                parsingJob.status === 'failed' ? 'error' :
                parsingJob.status === 'processing' ? 'processing' : 'pending';
 
-      switch (parsingJob.status) {
-        case 'queued':
-          progress = 10;
-          message = 'Document queued for parsing';
-          break;
-        case 'processing':
-          progress = 50;
-          message = 'Parsing document content...';
-          break;
-        case 'completed':
-          progress = 100;
-          message = 'Document parsing completed';
-          break;
-        case 'failed':
-          progress = 0;
-          message = parsingJob.error || 'Document parsing failed';
-          break;
-      }
+      progressInfo = getProgressInfo(parsingJob.status, parsingJob.error);
     } else {
-      // Fallback to file status
-      switch (file.status) {
-        case 'pending':
-          progress = 10;
-          message = 'File uploaded, waiting to process';
-          break;
-        case 'processing':
-          progress = 50;
-          message = 'Processing file content';
-          break;
-        case 'completed':
-          progress = 100;
-          message = 'Processing complete';
-          break;
-        case 'error':
-          progress = 0;
-          message = 'Processing failed';
-          break;
-      }
+      progressInfo = getProgressInfo(file.status);
     }
 
     const hasContent = file.status === 'completed'
@@ -297,8 +318,8 @@ const app = new Hono<HonoEnv>()
         id: file.id,
         name: file.name,
         status,
-        progress,
-        message,
+        progress: progressInfo.progress,
+        message: progressInfo.message,
         pageCount: file.pageCount || undefined,
         sizeBytes: file.sizeBytes,
         hasContent,
@@ -312,12 +333,16 @@ const app = new Hono<HonoEnv>()
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    console.error('Status check error:', error);
+    const logger = createLogger('GetFileStatus', c.env.NODE_ENV);
+    logger.error('Failed to check status', error instanceof Error ? error : undefined, { fileId });
     throw ApiErrors.internal('Failed to check status');
   }
 })
 
-// Delete file
+/**
+ * Delete file
+ * Removes file from R2 storage and database
+ */
 .delete('/:id', requireAuth(), async (c) => {
   const fileId = c.req.param('id');
   const db = drizzle(c.env.DB);
@@ -333,9 +358,11 @@ const app = new Hono<HonoEnv>()
       throw ApiErrors.notFound('File', fileId);
     }
 
-    // Delete from R2
-    await r2Storage.deleteFile(c.env, file.r2Key);
-    await r2Storage.deleteParsedContent(c.env, fileId);
+    // Delete from R2 storage
+    await Promise.all([
+      r2Storage.deleteFile(c.env, file.r2Key),
+      r2Storage.deleteParsedContent(c.env, fileId),
+    ]);
 
     // Delete from database (parsing jobs will cascade delete)
     await db.delete(files).where(eq(files.id, fileId));
@@ -350,12 +377,54 @@ const app = new Hono<HonoEnv>()
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    console.error('Error deleting file:', error);
+    const logger = createLogger('DeleteFile', c.env.NODE_ENV);
+    logger.error('Failed to delete file', error instanceof Error ? error : undefined, { fileId });
     throw ApiErrors.internal('Failed to delete file');
   }
 })
 
-// List files for user
+/**
+ * Serve file from R2 storage
+ * Used for local development - allows parser service to download files
+ */
+.get('/download/:r2Key{.+}', async (c) => {
+  const r2Key = c.req.param('r2Key');
+  const logger = createLogger('FileDownload', c.env.NODE_ENV);
+
+  try {
+    logger.info('Serving file from R2', { r2Key });
+    
+    const fileContent = await r2Storage.getFile(c.env, r2Key);
+    
+    if (!fileContent) {
+      throw ApiErrors.notFound('File', r2Key);
+    }
+
+    // Determine content type from file extension
+    const ext = r2Key.split('.').pop()?.toLowerCase();
+    const contentType = ext === 'pdf' ? 'application/pdf' : 'application/octet-stream';
+
+    logger.info('Successfully serving file', { sizeBytes: fileContent.byteLength });
+
+    return new Response(fileContent, {
+      headers: {
+        'Content-Type': contentType,
+        'Access-Control-Allow-Origin': '*',
+      },
+    });
+  } catch (error) {
+    if (error instanceof Error && error.message.includes('not found')) {
+      throw error;
+    }
+    logger.error('Failed to download file', error instanceof Error ? error : undefined, { r2Key });
+    throw ApiErrors.internal('Failed to download file');
+  }
+})
+
+/**
+ * List files for authenticated user
+ * Supports pagination and filtering by status
+ */
 .get('/', requireAuth(), async (c) => {
   const user = c.get('user');
   const userId = user?.id;
@@ -367,21 +436,21 @@ const app = new Hono<HonoEnv>()
   const limit = parseInt(c.req.query('limit') || '20', 10);
   const offset = parseInt(c.req.query('offset') || '0', 10);
   const status = c.req.query('status');
-
   const db = drizzle(c.env.DB);
 
   try {
+    // Build query conditions
     const conditions = status
       ? and(eq(files.ownerId, userId), eq(files.status, status))
       : eq(files.ownerId, userId);
 
+    // Get total count
     const totalFiles = await db
       .select()
       .from(files)
       .where(conditions);
 
-    const total = totalFiles.length;
-
+    // Get paginated results
     const results = await db
       .select()
       .from(files)
@@ -390,6 +459,7 @@ const app = new Hono<HonoEnv>()
       .limit(limit)
       .offset(offset);
 
+    // Enrich with content status
     const filesWithContentStatus = await Promise.all(
       results.map(async (file) => {
         const hasContent = file.status === 'completed'
@@ -414,176 +484,150 @@ const app = new Hono<HonoEnv>()
       success: true,
       data: {
         files: filesWithContentStatus,
-        total,
+        total: totalFiles.length,
+        limit,
+        offset,
       },
     });
   } catch (error) {
-    console.error('List files error:', error);
+    const logger = createLogger('ListFiles', c.env.NODE_ENV);
+    logger.error('Failed to list files', error instanceof Error ? error : undefined);
     throw ApiErrors.internal('Failed to list files');
   }
 })
 
-// Webhook endpoint for parsing completion (called by QStash after parser service finishes)
+/**
+ * Webhook endpoint for parsing completion
+ * Called by QStash after parser service finishes processing
+ */
 .post('/parse-complete', verifyQStashSignature, async (c) => {
   const db = drizzle(c.env.DB);
   const qstashBody = c.get('parsedBody') as ParsingCallbackBody;
+  const logger = createLogger('ParseComplete', c.env.NODE_ENV);
+  const tracker = createPipelineTracker(c.env.ANALYTICS_ENGINE, c.env.NODE_ENV);
 
-  console.log('[ParseComplete] Raw QStash body:', JSON.stringify(qstashBody));
+  logger.info('Received callback');
+  tracker.info('Parse complete callback received');
 
-  // Extract the actual parser response from QStash wrapper
-  let parsedResponse;
-  if (qstashBody.data) {
-    // Decode base64 body from QStash
-    const decodedBody = Buffer.from(JSON.stringify(qstashBody.data), 'base64').toString('utf-8');
-    console.log('[ParseComplete] Decoded parser response:', decodedBody);
-    parsedResponse = JSON.parse(decodedBody);
-  } else {
-    // Direct callback (not wrapped by QStash)
-    parsedResponse = qstashBody;
-  }
+  try{
+    // Decode QStash callback body
+    const body = decodeQStashBody(qstashBody);
 
-  console.log('[ParseComplete] Parser response:', JSON.stringify(parsedResponse));
+    // Validate required fields
+    if (!body.job_id || !body.file_id) {
+      logger.error('Missing required fields', null, {
+        job_id: body?.job_id,
+        file_id: body?.file_id,
+        hasBody: !!body,
+        bodyKeys: body ? Object.keys(body) : []
+      });
+      throw ApiErrors.badRequest('Missing job_id or file_id');
+    }
 
-  // Extract data from parser response
-  const body = parsedResponse.detail || parsedResponse;
-
-  if (!body.job_id && !body.file_id) {
-    console.error('[ParseComplete] Missing required fields in parser response:', {
-      job_id: body?.job_id,
-      file_id: body?.file_id,
-      hasBody: !!body,
-      bodyKeys: body ? Object.keys(body) : []
-    });
-    throw ApiErrors.badRequest('Missing job_id or file_id');
-  }
-
-  try {
     const completedAt = new Date();
 
     if (body.success && body.data) {
-      // Store parsed content in R2
+      // Success: Store parsed content and update records
+      logger.info('Processing successful result', { fileId: body.file_id, jobId: body.job_id });
+      tracker.trackStep('processing_success', { pageCount: body.data.pageCount });
+
       const parsedContent: ParsedContentStorage = {
         text: body.data.text,
         pageCount: body.data.pageCount,
         pages: body.data.pages,
         metadata: body.data.metadata,
         fileId: body.file_id,
-        parsedAt: new Date().toISOString(),
-        version: '2.0.0', // Parser service version
+        parsedAt: completedAt.toISOString(),
+        version: PARSER_SERVICE_VERSION,
       };
 
       await r2Storage.storeParsedContent(c.env, body.file_id, parsedContent);
 
-      // Update parsing job
-      await db.update(parsingJobs)
-        .set({
-          status: 'completed',
-          completedAt,
-          parsedContentR2Key: body.r2_key || `processed/${body.file_id}.json`,
-          processingMetrics: body.processing_metrics ? JSON.stringify(body.processing_metrics) : null,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(parsingJobs.id, body.job_id));
+      await markParsingJobCompleted(
+        db,
+        body.job_id,
+        body.r2_key || `processed/${body.file_id}.json`,
+        body.processing_metrics
+      );
 
-      // Update file status
-      await db.update(files)
-        .set({
-          status: 'completed',
-          pageCount: body.data.pageCount,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(files.id, body.file_id));
+      await markFileCompleted(db, body.file_id, body.data.pageCount);
 
-      // TODO: Notify user in the UI (implement real-time notifications)
-      // TODO: Optionally trigger quiz generation here
-
+      logger.info('Successfully processed completion', { fileId: body.file_id });
+      tracker.complete(true, { fileId: body.file_id, jobId: body.job_id });
     } else {
-      // Handle failure
-      await db.update(parsingJobs)
-        .set({
-          status: 'failed',
-          error: body.error?.message || 'Unknown parsing error',
-          completedAt,
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(parsingJobs.id, body.job_id));
+      // Failure: Update records with error
+      logger.error('Processing failed', null, { error: body.error });
+      tracker.error('Processing failed', new Error(body.error?.message || 'Unknown error'));
 
-      await db.update(files)
-        .set({
-          status: 'error',
-          updatedAt: new Date().toISOString(),
-        })
-        .where(eq(files.id, body.file_id));
+      const errorMessage = body.error?.message || 'Unknown parsing error';
+
+      await markParsingJobFailed(db, body.job_id, errorMessage);
+      await markFileFailed(db, body.file_id);
+
+      logger.info('Marked job and file as failed', { fileId: body.file_id });
+      tracker.complete(false, { fileId: body.file_id, error: errorMessage });
     }
 
     return c.json({ success: true });
   } catch (error) {
-    console.error('Parse complete webhook error:', error);
+    logger.error('Failed to process parsing completion', error instanceof Error ? error : undefined);
+    tracker.error('Callback processing failed', error instanceof Error ? error : new Error(String(error)));
+    tracker.complete(false, { error: error instanceof Error ? error.message : String(error) });
     throw ApiErrors.internal('Failed to process parsing completion');
   }
 })
 
-// Webhook endpoint for parsing failure (called by QStash if delivery fails)
+/**
+ * Webhook endpoint for parsing failure
+ * Called by QStash if delivery fails or parser service reports failure
+ */
 .post('/parse-failed', verifyQStashSignature, async (c) => {
   const db = drizzle(c.env.DB);
   const qstashBody = c.get('parsedBody') as ParsingCallbackBody;
+  const logger = createLogger('ParseFailed', c.env.NODE_ENV);
+  const tracker = createPipelineTracker(c.env.ANALYTICS_ENGINE, c.env.NODE_ENV);
 
-  console.log('[ParseFailed] Raw QStash body:', JSON.stringify(qstashBody));
-
-  // Extract the actual parser response from QStash wrapper
-  let parsedResponse;
-  if (qstashBody.data) {
-    // Decode base64 body from QStash
-    const decodedBody = Buffer.from(JSON.stringify(qstashBody.data), 'base64').toString('utf-8');
-    console.log('[ParseFailed] Decoded parser response:', decodedBody);
-    parsedResponse = JSON.parse(decodedBody);
-  } else {
-    // Direct callback (not wrapped by QStash)
-    parsedResponse = qstashBody;
-  }
-
-  // Extract data from parser response
-  const body = parsedResponse.detail || parsedResponse;
-
-  if (!body.job_id && !body.file_id) {
-    console.error('[ParseFailed] Missing required fields:', {
-      job_id: body?.job_id,
-      file_id: body?.file_id,
-      hasBody: !!body,
-      bodyKeys: body ? Object.keys(body) : []
-    });
-    throw ApiErrors.badRequest('Missing job_id or file_id');
-  }
+  logger.info('Received failure callback');
+  tracker.info('Parse failed callback received');
 
   try {
-    const failedAt = new Date();
+    // Decode QStash callback body
+    const body = decodeQStashBody(qstashBody);
 
-    // Update parsing job
-    await db.update(parsingJobs)
-      .set({
-        status: 'failed',
-        error: body.error || 'QStash delivery failed',
-        completedAt: failedAt,
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(parsingJobs.id, body.job_id));
+    // Validate required fields
+    if (!body.job_id || !body.file_id) {
+      logger.error('Missing required fields', null, {
+        job_id: body?.job_id,
+        file_id: body?.file_id,
+        hasBody: !!body,
+        bodyKeys: body ? Object.keys(body) : []
+      });
+      throw ApiErrors.badRequest('Missing job_id or file_id');
+    }
 
-    // Update file status
-    await db.update(files)
-      .set({
-        status: 'error',
-        updatedAt: new Date().toISOString(),
-      })
-      .where(eq(files.id, body.file_id));
+    const errorMessage = body.error?.message || 'QStash delivery failed';
+    logger.error('Parse failed', null, { error: errorMessage });
+    tracker.error('Parse failed', new Error(errorMessage));
+
+    // Update parsing job and file to failed status
+    await markParsingJobFailed(db, body.job_id, errorMessage);
+    await markFileFailed(db, body.file_id);
+
+    logger.info('Successfully processed failure callback', { fileId: body.file_id });
+    tracker.complete(false, { fileId: body.file_id, error: errorMessage });
 
     return c.json({ success: true });
   } catch (error) {
-    console.error('Parse failed webhook error:', error);
+    logger.error('Failed to process parsing failure', error instanceof Error ? error : undefined);
+    tracker.error('Failure callback processing failed', error instanceof Error ? error : new Error(String(error)));
     throw ApiErrors.internal('Failed to process parsing failure');
   }
 })
 
-// Get parsing job status
+/**
+ * Get parsing job status
+ * Returns detailed information about a specific parsing job
+ */
 .get('/parsing-job/:jobId', requireAuth(), async (c) => {
   const db = drizzle(c.env.DB);
   const jobId = c.req.param('jobId');
@@ -599,28 +643,7 @@ const app = new Hono<HonoEnv>()
       throw ApiErrors.notFound('Parsing job', jobId);
     }
 
-    let progress = 0;
-    let message = '';
-
-    switch (job.status) {
-      case 'queued':
-        progress = 10;
-        message = 'Document queued for parsing';
-        break;
-      case 'processing':
-        progress = 50;
-        message = 'Parsing document content...';
-        break;
-      case 'completed':
-        progress = 100;
-        message = 'Document parsing completed';
-        break;
-      case 'failed':
-        progress = 0;
-        message = job.error || 'Document parsing failed';
-        break;
-    }
-
+    const progressInfo = getProgressInfo(job.status, job.error);
     const metrics = job.processingMetrics ? JSON.parse(job.processingMetrics) : null;
 
     return c.json({
@@ -629,8 +652,8 @@ const app = new Hono<HonoEnv>()
         id: job.id,
         fileId: job.fileId,
         status: job.status,
-        progress,
-        message,
+        progress: progressInfo.progress,
+        message: progressInfo.message,
         error: job.error,
         processingMetrics: metrics,
         createdAt: job.createdAt,
@@ -642,12 +665,16 @@ const app = new Hono<HonoEnv>()
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    console.error('Get parsing job error:', error);
+    const logger = createLogger('GetParsingJob', c.env.NODE_ENV);
+    logger.error('Failed to get parsing job status', error instanceof Error ? error : undefined, { jobId });
     throw ApiErrors.internal('Failed to get parsing job status');
   }
 })
 
-// Optional: Check QStash message status (as per api_imp.md section 6)
+/**
+ * Check QStash message status
+ * Optional endpoint to check the status of a message in QStash queue
+ */
 .get('/job/:messageId/status', requireAuth(), async (c) => {
   const messageId = c.req.param('messageId');
 
@@ -671,7 +698,7 @@ const app = new Hono<HonoEnv>()
     return c.json({
       success: true,
       data: {
-        status: status.state, // 'pending', 'delivered', 'failed'
+        status: status.state,
         retries: status.retryCount,
         createdAt: status.createdAt,
         updatedAt: status.updatedAt,
@@ -681,7 +708,8 @@ const app = new Hono<HonoEnv>()
     if (error instanceof Error && error.message.includes('not found')) {
       throw error;
     }
-    console.error('Check QStash message status error:', error);
+    const logger = createLogger('CheckQStashStatus', c.env.NODE_ENV);
+    logger.error('Failed to check message status', error instanceof Error ? error : undefined, { messageId });
     throw ApiErrors.internal('Failed to check message status');
   }
 })
