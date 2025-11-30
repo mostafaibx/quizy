@@ -1,3 +1,5 @@
+
+import { z } from 'zod';
 import type { AIQuestion, GeneratedQuiz } from '@/types/ai.types';
 import type {
   QuizDocument,
@@ -23,6 +25,45 @@ import {
   isArrayValue,
   isMapValue
 } from '@/types/firestore.types';
+import { Errors } from './error-handler';
+import { validate } from './validation.service';
+
+// Runtime validation schema for QuizDocument
+const QuizDocumentSchema = z.object({
+  id: z.string(),
+  userId: z.string(),
+  fileId: z.string(),
+  status: z.enum(['ready', 'generating', 'failed']),
+  metadata: z.object({
+    fromPage: z.number(),
+    toPage: z.number(),
+    questionCount: z.number(),
+    provider: z.string(),
+    model: z.string(),
+    tokensUsed: z.number(),
+    cost: z.number(),
+    generatedAt: z.string(),
+  }),
+  config: z.object({
+    numQuestions: z.number(),
+    difficulty: z.enum(['easy', 'medium', 'hard', 'mixed']),
+    questionTypes: z.array(z.enum(['multiple-choice', 'true-false', 'short-answer'])),
+    language: z.string(),
+    includeExplanations: z.boolean(),
+  }),
+  questions: z.array(z.object({
+    id: z.string(),
+    type: z.enum(['multiple-choice', 'true-false', 'short-answer']),
+    question: z.string(),
+    options: z.array(z.string()).optional(),
+    correctAnswer: z.union([z.string(), z.number()]),
+    explanation: z.string().optional(),
+    difficulty: z.enum(['easy', 'medium', 'hard']),
+    topic: z.string().optional(),
+  })),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
 
 // Convert JavaScript value to Firestore format
 const toFirestoreValue = (value: JSValue): FirestoreValue => {
@@ -133,19 +174,27 @@ const quizToFirestoreDocument = (quiz: QuizDocument): FirestoreDocument => {
   return { fields };
 };
 
-// Convert Firestore document to QuizDocument
+// Convert Firestore document to QuizDocument with validation
 const firestoreDocumentToQuiz = (doc: FirestoreDocument): QuizDocument => {
+  if (!doc.fields) {
+    throw Errors.validation('Invalid Firestore document: missing fields');
+  }
+
   const result: Record<string, JSValue> = {};
 
-  for (const [key, value] of Object.entries(doc.fields || {})) {
+  for (const [key, value] of Object.entries(doc.fields)) {
     result[key] = fromFirestoreValue(value);
   }
 
-  return result as unknown as QuizDocument;
+  // Validate the converted document matches QuizDocument schema
+  return validate<QuizDocument>(QuizDocumentSchema, result, 'Invalid quiz document from Firestore');
 };
 
 // Get Firestore base URL
 const getFirestoreUrl = (projectId: string): string => {
+  if (!projectId || typeof projectId !== 'string') {
+    throw Errors.badRequest('Invalid Firestore project ID');
+  }
   return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents`;
 };
 
@@ -162,6 +211,13 @@ export const saveQuizToFirestore = async (
   fileId: string,
   quizConfig: { fromPage: number; toPage: number; config: QuizConfig }
 ): Promise<string> => {
+  if (!config.projectId || !config.apiKey) {
+    throw Errors.badRequest('Invalid Firestore configuration');
+  }
+  if (!userId || !fileId) {
+    throw Errors.badRequest('User ID and File ID are required');
+  }
+  
   const baseUrl = getFirestoreUrl(config.projectId);
 
   const quizDoc: QuizDocument = {
@@ -198,7 +254,10 @@ export const saveQuizToFirestore = async (
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Firestore error: ${error}`);
+    throw Errors.storage(`Failed to save quiz to Firestore: ${error}`, {
+      statusCode: response.status,
+      quizId: quiz.id,
+    });
   }
 
   return quiz.id;
@@ -209,6 +268,13 @@ export const getQuizFromFirestore = async (
   config: FirestoreConfig,
   quizId: string
 ): Promise<QuizDocument | null> => {
+  if (!config.projectId || !config.apiKey) {
+    throw Errors.badRequest('Invalid Firestore configuration');
+  }
+  if (!quizId) {
+    throw Errors.badRequest('Quiz ID is required');
+  }
+
   const baseUrl = getFirestoreUrl(config.projectId);
 
   const response = await fetch(
@@ -219,7 +285,10 @@ export const getQuizFromFirestore = async (
   if (!response.ok) {
     if (response.status === 404) return null;
     const error = await response.text();
-    throw new Error(`Firestore error: ${error}`);
+    throw Errors.storage(`Failed to get quiz from Firestore: ${error}`, {
+      statusCode: response.status,
+      quizId,
+    });
   }
 
   const data: FirestoreDocument = await response.json();
@@ -258,7 +327,10 @@ export const updateQuizInFirestore = async (
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Firestore error: ${error}`);
+    throw Errors.storage(`Failed to update quiz in Firestore: ${error}`, {
+      statusCode: response.status,
+      quizId,
+    });
   }
 };
 
@@ -270,10 +342,15 @@ export const updateQuestionInFirestore = async (
   updates: Partial<AIQuestion>
 ): Promise<void> => {
   const quiz = await getQuizFromFirestore(config, quizId);
-  if (!quiz) throw new Error('Quiz not found');
+  if (!quiz) {
+    throw Errors.notFound('Quiz', { quizId });
+  }
 
   if (questionIndex < 0 || questionIndex >= quiz.questions.length) {
-    throw new Error('Invalid question index');
+    throw Errors.badRequest('Invalid question index', {
+      questionIndex,
+      maxIndex: quiz.questions.length - 1,
+    });
   }
 
   quiz.questions[questionIndex] = {
@@ -294,7 +371,9 @@ export const addQuestionToFirestore = async (
   question: AIQuestion
 ): Promise<void> => {
   const quiz = await getQuizFromFirestore(config, quizId);
-  if (!quiz) throw new Error('Quiz not found');
+  if (!quiz) {
+    throw Errors.notFound('Quiz', { quizId });
+  }
 
   quiz.questions.push(question);
 
@@ -311,10 +390,15 @@ export const deleteQuestionFromFirestore = async (
   questionIndex: number
 ): Promise<void> => {
   const quiz = await getQuizFromFirestore(config, quizId);
-  if (!quiz) throw new Error('Quiz not found');
+  if (!quiz) {
+    throw Errors.notFound('Quiz', { quizId });
+  }
 
   if (questionIndex < 0 || questionIndex >= quiz.questions.length) {
-    throw new Error('Invalid question index');
+    throw Errors.badRequest('Invalid question index', {
+      questionIndex,
+      maxIndex: quiz.questions.length - 1,
+    });
   }
 
   quiz.questions.splice(questionIndex, 1);
@@ -332,15 +416,23 @@ export const reorderQuestionsInFirestore = async (
   newOrder: number[]
 ): Promise<void> => {
   const quiz = await getQuizFromFirestore(config, quizId);
-  if (!quiz) throw new Error('Quiz not found');
+  if (!quiz) {
+    throw Errors.notFound('Quiz', { quizId });
+  }
 
   if (newOrder.length !== quiz.questions.length) {
-    throw new Error('New order array must have same length as questions array');
+    throw Errors.badRequest('New order array must have same length as questions array', {
+      expectedLength: quiz.questions.length,
+      actualLength: newOrder.length,
+    });
   }
 
   const reorderedQuestions = newOrder.map(index => {
     if (index < 0 || index >= quiz.questions.length) {
-      throw new Error(`Invalid index in new order: ${index}`);
+      throw Errors.badRequest(`Invalid index in new order: ${index}`, {
+        index,
+        maxIndex: quiz.questions.length - 1,
+      });
     }
     return quiz.questions[index];
   });
@@ -388,7 +480,10 @@ export const listUserQuizzesFromFirestore = async (
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Firestore error: ${error}`);
+    throw Errors.storage(`Failed to list user quizzes from Firestore: ${error}`, {
+      statusCode: response.status,
+      userId,
+    });
   }
 
   const data: FirestoreQueryResponse[] = await response.json();
@@ -442,7 +537,10 @@ export const listFileQuizzesFromFirestore = async (
 
   if (!response.ok) {
     const error = await response.text();
-    throw new Error(`Firestore error: ${error}`);
+    throw Errors.storage(`Failed to list file quizzes from Firestore: ${error}`, {
+      statusCode: response.status,
+      fileId,
+    });
   }
 
   const data = await response.json();
