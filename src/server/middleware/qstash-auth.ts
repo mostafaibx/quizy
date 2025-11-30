@@ -24,14 +24,27 @@ async function createSignature(message: string, secret: string): Promise<string>
 export const verifyQStashSignature = async (c: Context, next: Next) => {
   const env = c.env as {
     NODE_ENV?: string;
+    PARSER_SERVICE_URL?: string;
     QSTASH_CURRENT_SIGNING_KEY?: string;
     QSTASH_NEXT_SIGNING_KEY?: string;
   };
 
-  // Skip signature verification in development with local QStash
-  if (env.NODE_ENV === 'development') {
+  // Skip signature verification ONLY in development/testing scenarios:
+  // 1. Development mode (NODE_ENV=development)
+  // 2. Using local parser (localhost/127.0.0.1) for testing
+  // 
+  // ⚠️  SECURITY NOTE: Direct processing (< 2MB files) does NOT use this endpoint!
+  // Direct calls return responses synchronously without callbacks.
+  // Therefore, ALL production requests to this endpoint MUST have valid signatures.
+  const isLocalDevelopment = env.NODE_ENV === 'development';
+  const isLocalParser = env.PARSER_SERVICE_URL?.includes('localhost') || 
+                        env.PARSER_SERVICE_URL?.includes('127.0.0.1');
+  
+  if (isLocalDevelopment || isLocalParser) {
     const body = await c.req.text();
-    console.log('[QStash Auth] Development mode - raw body:', body);
+    const reason = isLocalDevelopment ? 'development mode' : 'local parser (testing)';
+    console.log(`[QStash Auth] ⚠️  Skipping signature verification - ${reason}`);
+    console.log('[QStash Auth] Raw body:', body);
     try {
       const parsed = JSON.parse(body);
       console.log('[QStash Auth] Parsed body:', parsed);
@@ -44,10 +57,12 @@ export const verifyQStashSignature = async (c: Context, next: Next) => {
     return;
   }
 
+  // Production: REQUIRE valid QStash signature
   const signature = c.req.header('upstash-signature');
-
+  
   if (!signature) {
-    return c.json({ error: 'Missing signature' }, 401);
+    console.error('[QStash Auth] ❌ Missing signature in production - rejecting request');
+    return c.json({ error: 'Missing QStash signature' }, 401);
   }
 
   const body = await c.req.text();
