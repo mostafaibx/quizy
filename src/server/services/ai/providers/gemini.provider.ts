@@ -29,49 +29,100 @@ const buildPrompt = (request: QuizGenerationRequest): string => {
     throw new Error(`Insufficient content for quiz generation. Content length: ${content.text?.length || 0}`);
   }
 
-  return `You are an expert educational content creator. Generate a quiz based on the following content.
+  // Build context section with available metadata
+  const contextParts: string[] = [];
+  if (content.metadata?.title) {
+    contextParts.push(`- Document Title: ${content.metadata.title}`);
+  }
+  if (content.metadata?.subject) {
+    contextParts.push(`- Subject: ${content.metadata.subject}`);
+  }
+  if (content.metadata?.grade) {
+    contextParts.push(`- Education Level: ${content.metadata.grade}`);
+  }
+  
+  const contextSection = contextParts.length > 0 
+    ? `\nDOCUMENT CONTEXT:\n${contextParts.join('\n')}\n` 
+    : '';
 
-CONTENT:
+  // Difficulty guidance
+  const difficultyGuidance = config.difficulty === 'mixed' 
+    ? `- Mix question difficulties (easy, medium, hard) to assess different cognitive levels
+- Easy: Test basic recall and comprehension
+- Medium: Test application and analysis  
+- Hard: Test synthesis and evaluation`
+    : `- All questions should be ${config.difficulty} difficulty
+- ${config.difficulty === 'easy' ? 'Focus on recall and basic comprehension' : config.difficulty === 'medium' ? 'Focus on application and analysis' : 'Focus on critical thinking and synthesis'}`;
+
+  return `You are an expert educational assessment designer specializing in creating high-quality quiz questions for students.
+${contextSection}
+SOURCE CONTENT:
 ${content.text}
 
-REQUIREMENTS:
-- Generate exactly ${config.numQuestions} questions
-- Difficulty: ${config.difficulty}
-- Question types: ${config.questionTypes.join(', ')}
-- Language: ${config.language}
-- Include explanations: ${config.includeExplanations}
+===== TASK =====
+Create ${config.numQuestions} educational quiz questions in ${config.language} that assess student understanding of the content above.
 
-RULES:
-1. Questions must be directly based on the provided content
-2. For multiple-choice, provide exactly 4 options
-3. Ensure one clear correct answer
-4. correctAnswer for multiple-choice should be the index (0-3)
-5. correctAnswer for true-false should be the string "true" or "false" (NOT boolean)
-6. correctAnswer for short-answer should be a string
-7. Return valid JSON matching this exact schema
+===== REQUIREMENTS =====
+- Question Types: ${config.questionTypes.join(', ')}
+- Number of Questions: ${config.numQuestions}
+${difficultyGuidance}
+- Language: Generate ALL content (questions, options, explanations) in ${config.language}${content.metadata?.grade ? `\n- Target Audience: ${content.metadata.grade} students - use appropriate vocabulary and complexity` : ''}
+- Explanations: ${config.includeExplanations ? 'Include clear, educational explanations that teach the concept' : 'Brief explanations only'}
 
-OUTPUT FORMAT:
+===== PEDAGOGICAL GUIDELINES =====
+1. **Question Quality:**
+   - Base questions ONLY on information explicitly present in the content
+   - Test understanding and application, not just memorization
+   - Use clear, unambiguous language appropriate for the education level
+   - Avoid trick questions or overly complex wording
+
+2. **For Multiple Choice Questions:**
+   - Provide exactly 4 options (A, B, C, D)
+   - Make the correct answer clearly right for someone who understands the material
+   - Make wrong options (distractors) plausible but clearly incorrect
+   - Avoid "all of the above" or "none of the above" options
+   - Ensure distractors represent common misconceptions or errors
+   - correctAnswer must be the index (0, 1, 2, or 3)
+
+3. **For True/False Questions:**
+   - Make statements that are definitively true or false based on the content
+   - Avoid absolutes like "always" or "never" unless explicitly in the content
+   - Test important concepts, not trivial details
+   - correctAnswer must be the string "true" or "false" (NOT boolean)
+
+4. **For Short Answer Questions:**
+   - Ask questions that have one clear, concise answer
+   - Provide the most complete acceptable answer as correctAnswer
+   - Focus on key terms, definitions, or brief explanations
+   - correctAnswer must be a string
+
+5. **Explanations:**
+   - Explain WHY the answer is correct with reference to the content
+   - For multiple choice, briefly explain why wrong options are incorrect
+   - Use the explanation as a teaching moment
+   - Keep explanations clear and concise
+
+6. **Topic Tagging:**
+   - Extract a specific topic/concept name for each question
+   - Use clear, descriptive topic labels from the content
+
+===== OUTPUT FORMAT =====
+Return ONLY valid JSON (no markdown, no code blocks) in this exact structure:
 {
   "questions": [
     {
       "type": "multiple-choice",
-      "question": "...",
-      "options": ["A", "B", "C", "D"],
-      "correctAnswer": 0,
-      "explanation": "...",
+      "question": "What is...",
+      "options": ["Option A", "Option B", "Option C", "Option D"],
+      "correctAnswer": 2,
+      "explanation": "The correct answer is C because... Option A is wrong because...",
       "difficulty": "medium",
-      "topic": "..."
-    },
-    {
-      "type": "true-false",
-      "question": "...",
-      "correctAnswer": "true",
-      "explanation": "...",
-      "difficulty": "medium",
-      "topic": "..."
+      "topic": "Specific Topic Name"
     }
   ]
-}`;
+}
+
+Generate ${config.numQuestions} questions now:`;
 };
 
 export const geminiProvider: AIProvider = {
@@ -82,12 +133,14 @@ export const geminiProvider: AIProvider = {
     const genAI = new GoogleGenerativeAI(apiKey);
 
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-1.5-flash-latest",
+      systemInstruction: "You are an expert educational assessment designer with extensive experience in creating pedagogically sound quiz questions for students at all levels. Your questions are clear, fair, test genuine understanding, and align with learning objectives. You create engaging assessments that help students learn.",
       generationConfig: {
         responseMimeType: "application/json",
-        temperature: 0.7,
+        temperature: 0.8, // Slightly higher for more creative question variation
         topK: 40,
         topP: 0.95,
+        maxOutputTokens: 8192, // Ensure enough tokens for detailed explanations
       }
     });
 
@@ -110,7 +163,7 @@ export const geminiProvider: AIProvider = {
       })),
       metadata: {
         provider: 'gemini',
-        model: 'gemini-2.5-flash',
+        model: 'gemini-1.5-flash',
         tokensUsed,
         processingTimeMs: Date.now() - startTime,
         cost,
@@ -129,7 +182,10 @@ export const geminiProvider: AIProvider = {
   },
 
   calculateCost(tokens: number): number {
-    // Gemini 2.5 Flash: $0.075 per 1M input tokens
+    // Gemini 1.5 Flash pricing (as of 2024):
+    // Input: $0.075 per 1M tokens (up to 128K context)
+    // For prompts > 128K tokens: $0.15 per 1M tokens
+    // Using base rate for simplicity
     return (tokens / 1_000_000) * 0.075;
   }
 };
