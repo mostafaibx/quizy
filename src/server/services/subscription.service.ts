@@ -1,3 +1,4 @@
+
 import { nanoid } from "nanoid";
 import { eq, and, gte, lte } from "drizzle-orm";
 import { getDb } from "@/db";
@@ -9,7 +10,6 @@ import {
   type Plan,
   type Subscription,
   type NewSubscription,
-  type UsageTracking
 } from "@/db/schema";
 
 export interface PlanLimits {
