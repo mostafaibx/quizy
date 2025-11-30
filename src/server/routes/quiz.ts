@@ -9,7 +9,6 @@ import { drizzle } from 'drizzle-orm/d1';
 import { generationJobs, quizzes, files } from '@/db/schema';
 import { eq } from 'drizzle-orm';
 import type { HonoEnv } from '@/types/cloudflare';
-import type { ProcessedFileContent } from '@/types/qstash.types';
 import type { QuizConfig } from '@/types/ai.types';
 import { Client } from '@upstash/qstash';
 import { nanoid } from 'nanoid';
@@ -48,7 +47,7 @@ const app = new Hono<HonoEnv>()
     throw ApiErrors.unauthorized('User not authenticated');
   }
 
-  const { fileId, fromPage = 1, toPage, config } = await c.req.json();
+  const { fileId, fromPage, toPage, config } = await c.req.json();
 
   if (!fileId) {
     throw ApiErrors.badRequest('File ID is required');
@@ -88,26 +87,99 @@ const app = new Hono<HonoEnv>()
 
   // Queue with QStash if configured
   if (c.env.QSTASH_TOKEN) {
-    const client = new Client({ token: c.env.QSTASH_TOKEN });
+    console.log('=== QStash Configuration ===');
+    console.log('QSTASH_TOKEN:', c.env.QSTASH_TOKEN ? '✓ Set' : '✗ Missing');
+    console.log('QSTASH_URL:', c.env.QSTASH_URL || 'Not set (will use production)');
+    console.log('NEXT_PUBLIC_APP_URL:', c.env.NEXT_PUBLIC_APP_URL || '✗ MISSING');
+    console.log('NODE_ENV:', c.env.NODE_ENV || 'Not set');
+    
+    // Use local QStash URL in development, production URL otherwise
+    const clientConfig: { token: string; baseUrl?: string } = {
+      token: c.env.QSTASH_TOKEN
+    };
+    
+    if (c.env.QSTASH_URL) {
+      clientConfig.baseUrl = c.env.QSTASH_URL;
+    }
+    
+    console.log('QStash Client Config:', JSON.stringify(clientConfig, null, 2));
+    
+    const client = new Client(clientConfig);
+    
+    const webhookUrl = `${c.env.NEXT_PUBLIC_APP_URL}/api/quiz/process`;
+    const publishBody = {
+      fileId,
+      userId,
+      jobId,
+      fromPage,
+      toPage,
+      config: config || {},
+      retryCount: 0
+    };
+    
+    console.log('Publishing to QStash:');
+    console.log('  Webhook URL:', webhookUrl);
+    console.log('  Body:', JSON.stringify(publishBody, null, 2));
 
-    const message = await client.publishJSON({
-      url: `${c.env.NEXT_PUBLIC_APP_URL}/api/quiz/process`,
-      body: {
-        fileId,
-        userId,
-        jobId,
-        fromPage,
-        toPage,
-        config: config || {},
-        retryCount: 0
-      },
-      delay: 1
-    });
+    try {
+      console.log('Attempting to publish to QStash...');
+      
+      const message = await client.publishJSON({
+        url: webhookUrl,
+        body: publishBody,
+        delay: 1
+      });
 
-    // Update job with QStash message ID
-    await db.update(generationJobs)
-      .set({ qstashMessageId: message.messageId })
-      .where(eq(generationJobs.id, jobId));
+      console.log('✓ QStash Message Published:', message.messageId);
+
+      // Update job with QStash message ID
+      await db.update(generationJobs)
+        .set({ qstashMessageId: message.messageId })
+        .where(eq(generationJobs.id, jobId));
+    } catch (error) {
+      console.error('✗ QStash Publish Error:', error);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : String(error),
+        stack: error instanceof Error ? error.stack : undefined,
+        ...(error && typeof error === 'object' ? error : {})
+      });
+      
+      // In development, if QStash fails, process directly
+      if (c.env.NODE_ENV === 'development') {
+        console.log('⚠️  QStash failed in development - processing directly instead');
+        
+        // Call the process endpoint directly in the background
+        const processUrl = `${c.env.NEXT_PUBLIC_APP_URL}/api/quiz/process`;
+        console.log('Calling process endpoint directly:', processUrl);
+        
+        // Don't await - let it run in background
+        fetch(processUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(publishBody)
+        }).then(res => {
+          console.log('✓ Direct processing response:', res.status);
+          if (!res.ok) {
+            return res.text().then(text => {
+              console.error('✗ Direct processing failed:', text);
+            });
+          }
+          return res.json().then(data => {
+            console.log('✓ Direct processing result:', data);
+          });
+        }).catch(err => {
+          console.error('✗ Direct processing error:', err);
+        });
+        
+        console.log('✓ Direct processing initiated (background)');
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    console.log('⚠ QStash not configured (QSTASH_TOKEN missing)');
   }
 
   return c.json({
@@ -186,11 +258,22 @@ const app = new Hono<HonoEnv>()
 
     // Extract content for specified pages
     let textContent = parsedContent.text;
-    if (parsedContent.pageCount && fromPage && toPage) {
-      textContent = Array.from({ length: parsedContent.pageCount }, (_, i) => i + 1)
-        .filter((p) => p >= fromPage && p <= toPage)
-        .map((p) => p.toString())
-        .join('\n\n');
+    if (parsedContent.pages && fromPage && toPage) {
+      // Filter pages based on page range and extract their content
+      const filteredPages = parsedContent.pages
+        .filter((page) => page.pageNumber >= fromPage && page.pageNumber <= toPage)
+        .map((page) => page.content);
+      
+      if (filteredPages.length === 0) {
+        tracker.error('No pages found in specified range', new Error('Invalid page range'), { fromPage, toPage, totalPages: parsedContent.pageCount });
+        throw createError(`No pages found in range ${fromPage}-${toPage}`, 400, 'INVALID_PAGE_RANGE');
+      }
+      
+      textContent = filteredPages.join('\n\n');
+      tracker.info('Filtered content by page range', { fromPage, toPage, pagesIncluded: filteredPages.length });
+    } else if ((fromPage || toPage) && !parsedContent.pages) {
+      // If page filtering is requested but pages array is not available, log warning and use full text
+      tracker.warn('Page filtering requested but pages array not available, using full text', { fromPage, toPage });
     }
 
     // Generate quiz using AI provider
@@ -208,6 +291,7 @@ const app = new Hono<HonoEnv>()
         content: {
           text: textContent || '',
           metadata: {
+            title: parsedContent.metadata?.title as string,
             subject: parsedContent.metadata?.subject as string,
             grade: parsedContent.metadata?.grade as string,
             language: parsedContent.metadata?.language as string || 'en'
@@ -615,7 +699,16 @@ async function scheduleRetry(
 ) {
   if (!env.QSTASH_TOKEN) return;
 
-  const client = new Client({ token: env.QSTASH_TOKEN });
+  // Use local QStash URL in development, production URL otherwise
+  const clientConfig: { token: string; baseUrl?: string } = {
+    token: env.QSTASH_TOKEN
+  };
+  
+  if (env.QSTASH_URL) {
+    clientConfig.baseUrl = env.QSTASH_URL;
+  }
+  
+  const client = new Client(clientConfig);
 
   await client.publishJSON({
     url: `${env.NEXT_PUBLIC_APP_URL}/api/quiz/process`,
