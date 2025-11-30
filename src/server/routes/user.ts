@@ -5,6 +5,8 @@ import type { HonoEnv } from '@/types/cloudflare';
 import { getDb } from '@/db';
 import { users } from '@/db/schema';
 import { eq } from 'drizzle-orm';
+import { createLogger } from '../services/logger.service';
+import { checkUpdateLimit } from '../services/rate-limiter';
 
 const app = new Hono<HonoEnv>()
 
@@ -42,9 +44,26 @@ const app = new Hono<HonoEnv>()
 .put('/phone', requireAuth(), async (c) => {
   const user = c.get('user');
   const userId = user?.id;
+  const logger = createLogger('UpdatePhone', c.env.NODE_ENV);
 
   if (!userId) {
     throw ApiErrors.unauthorized('User not authenticated');
+  }
+
+  // Rate limiting for phone updates
+  if (c.env.KV) {
+    const rateLimit = await checkUpdateLimit(c.env.KV, userId, 'phone');
+    if (!rateLimit.allowed) {
+      logger.warn('Phone update rate limit exceeded', { userId });
+      return c.json({
+        success: false,
+        error: {
+          code: 'RATE_LIMITED',
+          message: 'Too many phone updates. Please try again later.',
+          retryAfter: rateLimit.retryAfter,
+        },
+      }, 429);
+    }
   }
 
   const body = await c.req.json();
@@ -68,6 +87,7 @@ const app = new Hono<HonoEnv>()
       throw ApiErrors.notFound('User', userId);
     }
 
+    logger.info('Phone number updated', { userId, hasPhone: !!phone });
     return c.json({
       success: true,
       data: {
@@ -76,7 +96,7 @@ const app = new Hono<HonoEnv>()
       }
     });
   } catch (error) {
-    console.error('Error updating phone number:', error);
+    logger.error('Failed to update phone number', error instanceof Error ? error : undefined, { userId });
     throw ApiErrors.internal('Failed to update phone number');
   }
 })
