@@ -1,6 +1,7 @@
 import { hc } from 'hono/client';
 import type { AppType } from '@/server/hono';
 import type { File as DBFile } from '@/db/schema';
+import type { Language, Subject, DocumentType } from '@/types/parsing.types';
 
 // RPC client initialization
 const client = hc<AppType>(
@@ -69,19 +70,29 @@ export interface ListFilesResponse {
  * Upload a file for processing
  *
  * @param file The file to upload
- * @param userId Optional user ID (will use 'anonymous' if not provided)
+ * @param options Upload options (language, subject, and documentType are REQUIRED)
  * @throws Error if the upload fails
  */
 async function uploadFile(
   file: File,
-  userId?: string
+  options: {
+    userId?: string;
+    language: Language;
+    subject: Subject;
+    documentType: DocumentType;
+  }
 ): Promise<FileUploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
+  
+  // Add required fields
+  formData.append('language', options.language);
+  formData.append('subject', options.subject);
+  formData.append('documentType', options.documentType);
 
   const headers: HeadersInit = {};
-  if (userId) {
-    headers['x-user-id'] = userId;
+  if (options.userId) {
+    headers['x-user-id'] = options.userId;
   }
 
   const res = await fetch(`${process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'}/api/files/upload`, {
@@ -200,22 +211,25 @@ async function pollFileStatus(
  * Upload a file and wait for processing to complete
  *
  * @param file The file to upload
- * @param options Upload and polling options
+ * @param options Upload and polling options (language, subject, and documentType are REQUIRED)
  * @returns The processed file with content
  */
 async function uploadAndWait(
   file: File,
   options: {
     userId?: string;
+    language: Language;
+    subject: Subject;
+    documentType: DocumentType;
     onProgress?: (status: FileStatusResponse) => void;
     maxAttempts?: number;
     intervalMs?: number;
-  } = {}
+  }
 ): Promise<FileWithContent> {
-  const { userId, ...pollOptions } = options;
+  const { userId, language, subject, documentType, ...pollOptions } = options;
 
   // Upload the file
-  const uploadResult = await uploadFile(file, userId);
+  const uploadResult = await uploadFile(file, { userId, language, subject, documentType });
 
   // Poll for completion
   const finalStatus = await pollFileStatus(uploadResult.file.id, pollOptions);
