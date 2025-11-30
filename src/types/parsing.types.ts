@@ -1,8 +1,52 @@
+// Supported languages
+export type Language = 'en' | 'ar' | 'de' | 'fr' | 'es' | 'it';
+
+// Supported subjects
+export type Subject = 
+  | 'science' | 'biology' | 'chemistry' | 'physics' | 'earth_science'
+  | 'math' | 'algebra' | 'geometry' | 'calculus' | 'statistics'
+  | 'english' | 'arabic' | 'german' | 'french' | 'spanish'
+  | 'history' | 'geography' | 'civics' | 'economics' | 'philosophy' | 'psychology'
+  | 'computer_science' | 'engineering' | 'health' | 'business'
+  | 'general';
+
+// Supported document types
+export type DocumentType = 'explanation' | 'exercises' | 'mixed';
+
+// Type guards for runtime validation
+export const LANGUAGES: Language[] = ['en', 'ar', 'de', 'fr', 'es', 'it'];
+
+export const SUBJECTS: Subject[] = [
+  'science', 'biology', 'chemistry', 'physics', 'earth_science',
+  'math', 'algebra', 'geometry', 'calculus', 'statistics',
+  'english', 'arabic', 'german', 'french', 'spanish',
+  'history', 'geography', 'civics', 'economics', 'philosophy', 'psychology',
+  'computer_science', 'engineering', 'health', 'business',
+  'general'
+];
+
+export const DOCUMENT_TYPES: DocumentType[] = ['explanation', 'exercises', 'mixed'];
+
+export function isLanguage(value: string): value is Language {
+  return LANGUAGES.includes(value as Language);
+}
+
+export function isSubject(value: string): value is Subject {
+  return SUBJECTS.includes(value as Subject);
+}
+
+export function isDocumentType(value: string): value is DocumentType {
+  return DOCUMENT_TYPES.includes(value as DocumentType);
+}
+
 export interface ParsingServiceRequest {
   file_id: string;
   file_url: string;
   mime_type: string;
-  user_id: string;
+  language: Language;        // REQUIRED
+  subject: Subject;          // REQUIRED
+  document_type: DocumentType; // REQUIRED
+  user_id?: string;          // Optional (not in API spec)
   options?: {
     extract_images?: boolean;
     extract_tables?: boolean;
@@ -53,6 +97,10 @@ export interface ParsingQStashBody {
   r2Key: string;
   mimeType: string;
   jobId: string;
+  language: Language;        // REQUIRED
+  subject: Subject;          // REQUIRED
+  documentType: DocumentType; // REQUIRED
+  fileSizeBytes: number;     // For routing decision
   retryCount?: number;
   parserServiceUrl?: string;
 }

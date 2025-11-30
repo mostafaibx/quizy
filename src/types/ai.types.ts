@@ -2,6 +2,7 @@ export interface QuizGenerationRequest {
   content: {
     text: string;
     metadata?: {
+      title?: string;
       subject?: string;
       grade?: string;
       language: string;
