@@ -45,18 +45,18 @@
         "NEXT_PUBLIC_APP_URL": "http://localhost:3000",
         "ALLOWED_ORIGINS": "http://localhost:3000",
         "QSTASH_URL": "http://127.0.0.1:8080",
-        "PARSER_SERVICE_URL": "https://europe-west1-quizy-474313.cloudfunctions.net/quizy-parser-service",
+        "PARSER_SERVICE_URL": "http://localhost:8080",
         "R2_PUBLIC_URL": "https://pub-3fc50c0e0f72494b93ad4ce4e1f965dc.r2.dev"
       }
     },
     "preview": {
     "vars": {
-      "NODE_ENV": "production",
+      "NODE_ENV": "development",
       "NEXT_PUBLIC_WEBAPP_ENV": "preview",
       "NEXT_PUBLIC_APP_URL": "https://quizy.imostafa330.workers.dev/",
       "ALLOWED_ORIGINS": "https://quizy.imostafa330.workers.dev/",
       "QSTASH_URL": "https://qstash.upstash.io",
-      "PARSER_SERVICE_URL": "https://europe-west1-quizy-474313.cloudfunctions.net/quizy-parser-service",
+      "PARSER_SERVICE_URL": "http://localhost:8080",
       "R2_PUBLIC_URL": "https://pub-3fc50c0e0f72494b93ad4ce4e1f965dc.r2.dev"
     },
     "kv_namespaces": [
